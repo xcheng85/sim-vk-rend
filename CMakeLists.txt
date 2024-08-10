@@ -58,6 +58,29 @@ include_directories(${SDL2_SOURCE_DIR}/include)
 include_directories(${vma_SOURCE_DIR}/include)
 include_directories(${volk_SOURCE_DIR})
 
+FetchContent_Declare(
+  gltfsdk
+  GIT_REPOSITORY https://github.com/microsoft/glTF-SDK.git
+  GIT_TAG        r1.9.6.0
+)
+if(NOT gltfsdk_POPULATED)
+  set(ENABLE_UNIT_TESTS OFF CACHE BOOL "" FORCE)
+  set(ENABLE_SAMPLES OFF CACHE BOOL "" FORCE)
+  set(RAPIDJSON_BUILD_DOC OFF CACHE BOOL "" FORCE)
+  set(RAPIDJSON_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(RAPIDJSON_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  FetchContent_Populate(gltfsdk)
+endif()
+message(${gltfsdk_SOURCE_DIR})
+add_subdirectory(${gltfsdk_SOURCE_DIR})
+
+FetchContent_Declare(
+        stb
+        GIT_REPOSITORY https://github.com/nothings/stb.git
+)
+FetchContent_Populate(stb)
+FetchContent_MakeAvailable(stb)
+
 
 # for experimental/future
 #GCC provides experimental support for the upcoming ISO C++ standard, C++0x. 

@@ -64,7 +64,7 @@ public:
             }
         }
     }
-    inline SDL_Window *nativeHandle()
+    inline SDL_Window *nativeHandle() const
     {
         return this->_window;
     };

@@ -102,24 +102,24 @@ inline const std::set<std::string> &getInstanceExtensions()
         // "VK_NV_external_memory_capabilities",
         "VK_KHR_get_physical_device_properties2",
         //"VK_EXT_validation_flags", //deprecated by VK_EXT_layer_settings
-        // "VK_KHR_device_group_creation",
-        // "VK_KHR_external_memory_capabilities",
-        // "VK_KHR_external_semaphore_capabilities",
-        // "VK_EXT_direct_mode_display",
-        // // "VK_EXT_display_surface_counter",
-        // "VK_EXT_swapchain_colorspace",
-        // "VK_KHR_external_fence_capabilities",
+        "VK_KHR_device_group_creation",
+        "VK_KHR_external_memory_capabilities",
+        "VK_KHR_external_semaphore_capabilities",
+        "VK_EXT_direct_mode_display",
+        // "VK_EXT_display_surface_counter",
+        "VK_EXT_swapchain_colorspace",
+        "VK_KHR_external_fence_capabilities",
         "VK_KHR_get_surface_capabilities2",
         "VK_KHR_get_display_properties2",
         "VK_EXT_debug_utils",
         // "VK_KHR_surface_protected_capabilities",
         "VK_EXT_validation_features",
-        // // "VK_EXT_headless_surface",
-        // "VK_EXT_surface_maintenance1",
-        // // "VK_EXT_acquire_drm_display",
-        // "VK_KHR_portability_enumeration",
-        // // "VK_GOOGLE_surfaceless_query",
-        // "VK_LUNARG_direct_driver_loading",
+        // "VK_EXT_headless_surface",
+        "VK_EXT_surface_maintenance1",
+        // "VK_EXT_acquire_drm_display",
+        "VK_KHR_portability_enumeration",
+        // "VK_GOOGLE_surfaceless_query",
+        "VK_LUNARG_direct_driver_loading",
         "VK_EXT_layer_settings"};
     return instanceExtensions;
 }
@@ -143,6 +143,7 @@ private:
     void selectPhysicalDevice();
     void queryPhysicalDeviceCaps();
     void selectQueueFamily();
+    // feature chain
     void selectFeatures();
     void createLogicDevice();
     void cacheCommandQueue();
@@ -189,7 +190,26 @@ private:
     void createCommandBuffer();
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
     void createPerFrameSyncObjects();
+
+    // device cap check
     bool checkValidationLayerSupport();
+
+    // vkGetPhysicalDeviceFeatures2 + linkedlist to fill in
+    inline bool checkRayTracingSupport()
+    {
+        return (_accelStructFeature.accelerationStructure &&
+                _rayTracingFeature.rayTracingPipeline && _rayQueryFeature.rayQuery);
+    }
+
+    inline bool isMultiviewSupported() const
+    {
+        return _vk11features.multiview;
+    }
+
+    inline bool isFragmentDensityMapSupported() const
+    {
+        return _fragmentDensityMapFeature.fragmentDensityMap == VK_TRUE;
+    }
 
     // app-specific
     void preHostDeviceIO();
@@ -206,26 +226,42 @@ private:
     const std::vector<const char *> _validationLayers = {
         "VK_LAYER_KHRONOS_validation"};
 
+    // features chains
+    // now is to toggle features selectively
+    // enable features
+    static VkPhysicalDeviceFeatures sPhysicalDeviceFeatures; // cannot fly without sPhysicalDeviceFeatures2
+    static VkPhysicalDeviceFeatures2 sPhysicalDeviceFeatures2;
+
+    static VkPhysicalDeviceVulkan11Features sEnable11Features;
+    static VkPhysicalDeviceVulkan12Features sEnable12Features;
+    static VkPhysicalDeviceVulkan13Features sEnable13Features;
+    static VkPhysicalDeviceFragmentDensityMapFeaturesEXT sFragmentDensityMapFeatures;
+    // for ray-tracing
+    static VkPhysicalDeviceAccelerationStructureFeaturesKHR sAccelStructFeatures;
+    static VkPhysicalDeviceRayTracingPipelineFeaturesKHR sRayTracingPipelineFeatures;
+    static VkPhysicalDeviceRayQueryFeaturesKHR sRayQueryFeatures;
+
     const std::vector<const char *> _deviceExtensions = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-        //            VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,
-        //            VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
-        //            VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME,
-        //            VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,
-        //            VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
-        //            VK_NV_MESH_SHADER_EXTENSION_NAME,            // mesh_shaders_extension_present
-        //            VK_KHR_MULTIVIEW_EXTENSION_NAME,             // multiview_extension_present
-        //            VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME, // fragment_shading_rate_present
-        //            VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME,
-        //            VK_KHR_MAINTENANCE2_EXTENSION_NAME,
-        //            VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, // ray_tracing_present
-        //            VK_KHR_SPIRV_1_4_EXTENSION_NAME,
-        //            VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-        //            VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
-        //            VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
-        //            VK_KHR_RAY_QUERY_EXTENSION_NAME, // ray query
-        //            VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME,
-        //            VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
+        VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,
+        VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
+        // VkPhysicalDeviceVulkan11Features::shaderDrawParameters nees to be set VK_TRUE
+        VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME, 
+        VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,
+        VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
+        VK_NV_MESH_SHADER_EXTENSION_NAME,            // mesh_shaders_extension_present
+        VK_KHR_MULTIVIEW_EXTENSION_NAME,             // multiview_extension_present
+        VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME, // fragment_shading_rate_present
+        VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME,
+        VK_KHR_MAINTENANCE2_EXTENSION_NAME,
+        VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, // ray_tracing_present
+        VK_KHR_SPIRV_1_4_EXTENSION_NAME,
+        VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME, // for ray tracing
+        VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+        VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME, // for ray tracing
+        VK_KHR_RAY_QUERY_EXTENSION_NAME,                // ray query needed for raytracing
+        VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME,
+        VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
     };
 
 #if defined(__ANDROID__)
@@ -239,6 +275,9 @@ private:
 
     VkPhysicalDevice _selectedPhysicalDevice{VK_NULL_HANDLE};
     VkPhysicalDeviceProperties _physicalDevicesProp1;
+
+    VkStructChain<> _featureChain;
+
     // features supported by the selected physical device
     // KHR, ext, not in core features
     // VkPhysicalDeviceAccelerationStructureFeaturesKHR

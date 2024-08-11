@@ -15,12 +15,12 @@ static constexpr int MAX_DESCRIPTOR_SETS = 1 * MAX_FRAMES_IN_FLIGHT + 1 + 4;
 void VkApplication::init()
 {
     createInstance();
-    // createSurface();
-    // selectPhysicalDevice();
-    // queryPhysicalDeviceCaps();
-    // selectQueueFamily();
-    // selectFeatures();
-    // createLogicDevice();
+    createSurface();
+    selectPhysicalDevice();
+    queryPhysicalDeviceCaps();
+    selectQueueFamily();
+    selectFeatures();
+    createLogicDevice();
     // cacheCommandQueue();
     // createVMA();
     // prepareSwapChainCreation();
@@ -375,488 +375,447 @@ void VkApplication::createInstance()
     ASSERT(_debugMessenger != VK_NULL_HANDLE, "Error creating DebugUtilsMessenger");
 };
 
-// void VkApplication::createSurface()
-// {
-// #if defined(__ANDROID__)
-//     ASSERT(_osWindow, "_osWindow is needed to create os surface");
-//     const VkAndroidSurfaceCreateInfoKHR create_info{
-//         .sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR,
-//         .pNext = nullptr,
-//         .flags = 0,
-//         .window = _osWindow.get()};
+void VkApplication::createSurface()
+{
+#if defined(__ANDROID__)
+    ASSERT(_osWindow, "_osWindow is needed to create os surface");
+    const VkAndroidSurfaceCreateInfoKHR create_info{
+        .sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR,
+        .pNext = nullptr,
+        .flags = 0,
+        .window = _osWindow.get()};
 
-//     VK_CHECK(vkCreateAndroidSurfaceKHR(_instance, &create_info, nullptr, &_surface));
-// #endif
+    VK_CHECK(vkCreateAndroidSurfaceKHR(_instance, &create_info, nullptr, &_surface));
+#endif
 
-// #ifndef __ANDROID__
-//     // Caution:
-//     // The window must have been created with the SDL_WINDOW_VULKAN flag and instance must have been created
-//     // with extensions returned by SDL_Vulkan_GetInstanceExtensions() enabled.
-//     ASSERT(_window.nativeHandle(), "SDL_window is needed to create os surface");
-//     auto sdlWindow = _window.nativeHandle();
-//     SDL_Vulkan_CreateSurface(sdlWindow, _instance, &_surface);
-//     ASSERT(_surface != VK_NULL_HANDLE, "Error creating SDL_Vulkan_CreateSurface");
-// #endif
-// }
+#ifndef __ANDROID__
+    // Caution:
+    // The window must have been created with the SDL_WINDOW_VULKAN flag and instance must have been created
+    // with extensions returned by SDL_Vulkan_GetInstanceExtensions() enabled.
+    ASSERT(_window.nativeHandle(), "SDL_window is needed to create os surface");
+    auto sdlWindow = _window.nativeHandle();
+    SDL_Vulkan_CreateSurface(sdlWindow, _instance, &_surface);
+    ASSERT(_surface != VK_NULL_HANDLE, "Error creating SDL_Vulkan_CreateSurface");
+#endif
+}
 
-// void VkApplication::selectPhysicalDevice()
-// {
-//     // 10. Select Physical Device based on surface
-//     {
-//         //  {VK_KHR_SWAPCHAIN_EXTENSION_NAME},  // physical device extensions
-//         uint32_t physicalDeviceCount{0};
-//         VK_CHECK(vkEnumeratePhysicalDevices(_instance, &physicalDeviceCount, nullptr));
-//         ASSERT(physicalDeviceCount > 0, "No Vulkan Physical Devices found");
-//         std::vector<VkPhysicalDevice> physicalDevices(physicalDeviceCount);
-//         VK_CHECK(vkEnumeratePhysicalDevices(_instance, &physicalDeviceCount,
-//                                             physicalDevices.data()));
-//         LOGI("Found %d  Vulkan capable device(s)", physicalDeviceCount);
+void VkApplication::selectPhysicalDevice()
+{
+    // 10. Select Physical Device based on surface
+    {
+        //  {VK_KHR_SWAPCHAIN_EXTENSION_NAME},  // physical device extensions
+        uint32_t physicalDeviceCount{0};
+        VK_CHECK(vkEnumeratePhysicalDevices(_instance, &physicalDeviceCount, nullptr));
+        ASSERT(physicalDeviceCount > 0, "No Vulkan Physical Devices found");
+        std::vector<VkPhysicalDevice> physicalDevices(physicalDeviceCount);
+        VK_CHECK(vkEnumeratePhysicalDevices(_instance, &physicalDeviceCount,
+                                            physicalDevices.data()));
+        log(Level::Info, "Found ", physicalDeviceCount, "Vulkan capable device(s)");
 
-//         // select physical gpu
-//         VkPhysicalDevice discrete_gpu = VK_NULL_HANDLE;
-//         VkPhysicalDevice integrated_gpu = VK_NULL_HANDLE;
+        // select physical gpu
+        VkPhysicalDevice discrete_gpu = VK_NULL_HANDLE;
+        VkPhysicalDevice integrated_gpu = VK_NULL_HANDLE;
 
-//         VkPhysicalDeviceProperties prop;
-//         for (uint32_t i = 0; i < physicalDeviceCount; ++i)
-//         {
-//             VkPhysicalDevice physicalDevice = physicalDevices[i];
-//             vkGetPhysicalDeviceProperties(physicalDevice, &prop);
+        VkPhysicalDeviceProperties prop;
+        for (uint32_t i = 0; i < physicalDeviceCount; ++i)
+        {
+            VkPhysicalDevice physicalDevice = physicalDevices[i];
+            vkGetPhysicalDeviceProperties(physicalDevice, &prop);
 
-//             if (prop.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-//             {
-//                 uint32_t queueFamilyCount = 0;
-//                 vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
-//                                                          nullptr);
+            if (prop.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+            {
+                uint32_t queueFamilyCount = 0;
+                vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
+                                                         nullptr);
 
-//                 std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-//                 vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
-//                                                          queueFamilies.data());
+                std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+                vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
+                                                         queueFamilies.data());
 
-//                 VkBool32 surfaceSupported;
-//                 for (uint32_t familyIndex = 0; familyIndex < queueFamilyCount; ++familyIndex)
-//                 {
-//                     const VkQueueFamilyProperties &queueFamilyProp = queueFamilies[familyIndex];
-//                     // graphics or GPGPU family queue
-//                     if (queueFamilyProp.queueCount > 0 && (queueFamilyProp.queueFlags &
-//                                                            (VK_QUEUE_GRAPHICS_BIT |
-//                                                             VK_QUEUE_COMPUTE_BIT)))
-//                     {
-//                         vkGetPhysicalDeviceSurfaceSupportKHR(
-//                             physicalDevice,
-//                             familyIndex,
-//                             _surface,
-//                             &surfaceSupported);
+                VkBool32 surfaceSupported;
+                for (uint32_t familyIndex = 0; familyIndex < queueFamilyCount; ++familyIndex)
+                {
+                    const VkQueueFamilyProperties &queueFamilyProp = queueFamilies[familyIndex];
+                    // graphics or GPGPU family queue
+                    if (queueFamilyProp.queueCount > 0 && (queueFamilyProp.queueFlags &
+                                                           (VK_QUEUE_GRAPHICS_BIT |
+                                                            VK_QUEUE_COMPUTE_BIT)))
+                    {
+                        vkGetPhysicalDeviceSurfaceSupportKHR(
+                            physicalDevice,
+                            familyIndex,
+                            _surface,
+                            &surfaceSupported);
 
-//                         if (surfaceSupported)
-//                         {
-//                             _presentQueueFamilyIndex = familyIndex;
-//                             discrete_gpu = physicalDevice;
-//                             break;
-//                         }
-//                     }
-//                 }
-//                 continue;
-//             }
+                        if (surfaceSupported)
+                        {
+                            _presentQueueFamilyIndex = familyIndex;
+                            discrete_gpu = physicalDevice;
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
 
-//             if (prop.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
-//             {
-//                 uint32_t queueFamilyCount = 0;
-//                 vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
-//                                                          nullptr);
+            if (prop.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
+            {
+                uint32_t queueFamilyCount = 0;
+                vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
+                                                         nullptr);
 
-//                 std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-//                 vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
-//                                                          queueFamilies.data());
+                std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+                vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
+                                                         queueFamilies.data());
 
-//                 VkBool32 surfaceSupported;
-//                 for (uint32_t familyIndex = 0; familyIndex < queueFamilyCount; ++familyIndex)
-//                 {
-//                     const VkQueueFamilyProperties &queueFamilyProp = queueFamilies[familyIndex];
-//                     // graphics or GPGPU family queue
-//                     if (queueFamilyProp.queueCount > 0 && (queueFamilyProp.queueFlags &
-//                                                            (VK_QUEUE_GRAPHICS_BIT |
-//                                                             VK_QUEUE_COMPUTE_BIT)))
-//                     {
-//                         vkGetPhysicalDeviceSurfaceSupportKHR(
-//                             physicalDevice,
-//                             familyIndex,
-//                             _surface,
-//                             &surfaceSupported);
+                VkBool32 surfaceSupported;
+                for (uint32_t familyIndex = 0; familyIndex < queueFamilyCount; ++familyIndex)
+                {
+                    const VkQueueFamilyProperties &queueFamilyProp = queueFamilies[familyIndex];
+                    // graphics or GPGPU family queue
+                    if (queueFamilyProp.queueCount > 0 && (queueFamilyProp.queueFlags &
+                                                           (VK_QUEUE_GRAPHICS_BIT |
+                                                            VK_QUEUE_COMPUTE_BIT)))
+                    {
+                        vkGetPhysicalDeviceSurfaceSupportKHR(
+                            physicalDevice,
+                            familyIndex,
+                            _surface,
+                            &surfaceSupported);
 
-//                         if (surfaceSupported)
-//                         {
-//                             _presentQueueFamilyIndex = familyIndex;
-//                             integrated_gpu = physicalDevice;
+                        if (surfaceSupported)
+                        {
+                            _presentQueueFamilyIndex = familyIndex;
+                            integrated_gpu = physicalDevice;
 
-//                             break;
-//                         }
-//                     }
-//                 }
-//                 continue;
-//             }
-//         }
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+        }
 
-//         _selectedPhysicalDevice = discrete_gpu ? discrete_gpu : integrated_gpu;
-//         ASSERT(_selectedPhysicalDevice, "No Vulkan Physical Devices found");
-//         ASSERT(_presentQueueFamilyIndex != std::numeric_limits<uint32_t>::max(),
-//                "No Queue Family Index supporting surface found");
-//     }
-// }
+        _selectedPhysicalDevice = discrete_gpu ? discrete_gpu : integrated_gpu;
+        ASSERT(_selectedPhysicalDevice, "No Vulkan Physical Devices found");
+        ASSERT(_presentQueueFamilyIndex != std::numeric_limits<uint32_t>::max(),
+               "No Queue Family Index supporting surface found");
+    }
+}
 
-// void VkApplication::queryPhysicalDeviceCaps()
-// {
-//     // 11. Query and Logging physical device (if some feature not supported by the physical device,
-//     // then we cannot enable them when we create the logic device later on)
-//     {
-//         // check if the descriptor index(bindless) is supported
-//         // Query bindless extension, called Descriptor Indexing (https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_EXT_descriptor_indexing.html)
-//         VkPhysicalDeviceDescriptorIndexingFeatures indexingFeatures{
-//             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES, nullptr};
-//         VkPhysicalDeviceFeatures2 deviceFeatures{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-//                                                  &indexingFeatures};
-//         vkGetPhysicalDeviceFeatures2(_selectedPhysicalDevice, &deviceFeatures);
-//         _bindlessSupported = indexingFeatures.descriptorBindingPartiallyBound &&
-//                              indexingFeatures.runtimeDescriptorArray;
-//         ASSERT(_bindlessSupported, "Bindless is not supported");
+void VkApplication::queryPhysicalDeviceCaps()
+{
+    // 11. Query and Logging physical device (if some feature not supported by the physical device,
+    // then we cannot enable them when we create the logic device later on)
+    {
+        // check if the descriptor index(bindless) is supported
+        // Query bindless extension, called Descriptor Indexing (https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_EXT_descriptor_indexing.html)
+        VkPhysicalDeviceDescriptorIndexingFeatures indexingFeatures{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES, nullptr};
+        VkPhysicalDeviceFeatures2 deviceFeatures{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+                                                 &indexingFeatures};
+        vkGetPhysicalDeviceFeatures2(_selectedPhysicalDevice, &deviceFeatures);
+        _bindlessSupported = indexingFeatures.descriptorBindingPartiallyBound &&
+                             indexingFeatures.runtimeDescriptorArray;
+        ASSERT(_bindlessSupported, "Bindless is not supported");
 
-//         // Properties V1
-//         vkGetPhysicalDeviceProperties(_selectedPhysicalDevice, &_physicalDevicesProp1);
-//         // query device limits
-//         // timestampPeriod is the number of nanoseconds required for a timestamp query to be incremented by 1.
-//         // See Timestamp Queries.
-//         // auto gpu_timestamp_frequency = physicalDevicesProp1.limits.timestampPeriod / (1000 * 1000);
-//         // auto s_ubo_alignment = vulkan_physical_properties.limits.minUniformBufferOffsetAlignment;
-//         // auto s_ssbo_alignemnt = vulkan_physical_properties.limits.minStorageBufferOffsetAlignment;
+        // Properties V1
+        vkGetPhysicalDeviceProperties(_selectedPhysicalDevice, &_physicalDevicesProp1);
+        // query device limits
+        // timestampPeriod is the number of nanoseconds required for a timestamp query to be incremented by 1.
+        // See Timestamp Queries.
+        // auto gpu_timestamp_frequency = physicalDevicesProp1.limits.timestampPeriod / (1000 * 1000);
+        // auto s_ubo_alignment = vulkan_physical_properties.limits.minUniformBufferOffsetAlignment;
+        // auto s_ssbo_alignemnt = vulkan_physical_properties.limits.minStorageBufferOffsetAlignment;
 
-//         LOGI("GPU Used: %s, Vendor: %d, Device: %d, apiVersion:%d.%d.%d.%d",
-//              _physicalDevicesProp1.deviceName,
-//              _physicalDevicesProp1.vendorID,
-//              _physicalDevicesProp1.deviceID,
-//              VK_API_VERSION_MAJOR(_physicalDevicesProp1.apiVersion),
-//              VK_API_VERSION_MINOR(_physicalDevicesProp1.apiVersion),
-//              VK_API_VERSION_PATCH(_physicalDevicesProp1.apiVersion),
-//              VK_API_VERSION_VARIANT(_physicalDevicesProp1.apiVersion));
+        log(Level::Info,
+            " GPU Used: ", _physicalDevicesProp1.deviceName,
+            " Vendor: ", _physicalDevicesProp1.vendorID,
+            " Device: ", _physicalDevicesProp1.deviceID);
 
-//         // If the VkPhysicalDeviceSubgroupProperties structure is included in the pNext chain of the VkPhysicalDeviceProperties2 structure passed to vkGetPhysicalDeviceProperties2,
-//         // it is filled in with each corresponding implementation-dependent property.
-//         // linked-list
-//         VkPhysicalDeviceSubgroupProperties subgroupProp{
-//             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES};
-//         subgroupProp.pNext = NULL;
-//         VkPhysicalDeviceProperties2 physicalDevicesProp{
-//             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
-//         physicalDevicesProp.pNext = &subgroupProp;
-//         vkGetPhysicalDeviceProperties2(_selectedPhysicalDevice, &physicalDevicesProp);
+        // If the VkPhysicalDeviceSubgroupProperties structure is included in the pNext chain of the VkPhysicalDeviceProperties2 structure passed to vkGetPhysicalDeviceProperties2,
+        // it is filled in with each corresponding implementation-dependent property.
+        // linked-list
+        VkPhysicalDeviceSubgroupProperties subgroupProp{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES};
+        subgroupProp.pNext = NULL;
+        VkPhysicalDeviceProperties2 physicalDevicesProp{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+        physicalDevicesProp.pNext = &subgroupProp;
+        vkGetPhysicalDeviceProperties2(_selectedPhysicalDevice, &physicalDevicesProp);
 
-//         // Get memory properties
-//         VkPhysicalDeviceMemoryProperties2 memoryProperties_ = {
-//             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2,
-//         };
-//         vkGetPhysicalDeviceMemoryProperties2(_selectedPhysicalDevice, &memoryProperties_);
+        // Get memory properties
+        VkPhysicalDeviceMemoryProperties2 memoryProperties_ = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2,
+        };
+        vkGetPhysicalDeviceMemoryProperties2(_selectedPhysicalDevice, &memoryProperties_);
 
-//         // extensions for this selected device
-//         uint32_t extensionPropertyCount{0};
-//         VK_CHECK(vkEnumerateDeviceExtensionProperties(_selectedPhysicalDevice, nullptr,
-//                                                       &extensionPropertyCount, nullptr));
-//         std::vector<VkExtensionProperties> extensionProperties(extensionPropertyCount);
-//         VK_CHECK(vkEnumerateDeviceExtensionProperties(_selectedPhysicalDevice, nullptr,
-//                                                       &extensionPropertyCount,
-//                                                       extensionProperties.data()));
-//         // convert to c++ string
-//         std::vector<std::string> extensions;
-//         std::transform(extensionProperties.begin(), extensionProperties.end(),
-//                        std::back_inserter(extensions),
-//                        [](const VkExtensionProperties &property)
-//                        {
-//                            return std::string(property.extensionName);
-//                        });
-//         LOGI("physical device extensions: ");
-//         for (const auto &ext : extensions)
-//         {
-//             LOGI("%s", ext.c_str());
-//         }
-//     }
-// }
+        // extensions for this selected device
+        uint32_t extensionPropertyCount{0};
+        VK_CHECK(vkEnumerateDeviceExtensionProperties(_selectedPhysicalDevice, nullptr,
+                                                      &extensionPropertyCount, nullptr));
+        std::vector<VkExtensionProperties> extensionProperties(extensionPropertyCount);
+        VK_CHECK(vkEnumerateDeviceExtensionProperties(_selectedPhysicalDevice, nullptr,
+                                                      &extensionPropertyCount,
+                                                      extensionProperties.data()));
+        // convert to c++ string
+        std::vector<std::string> extensions;
+        std::transform(extensionProperties.begin(), extensionProperties.end(),
+                       std::back_inserter(extensions),
+                       [](const VkExtensionProperties &property)
+                       {
+                           return std::string(property.extensionName);
+                       });
+        log(Level::Info, "Found ", extensions.size(), " physical device extension(s)");
+        for (const auto &ext : extensions)
+        {
+            log(Level::Info, ext);
+        }
+    }
+}
 
-// void VkApplication::selectQueueFamily()
-// {
-//     // 12. Query the selected device to cache the device queue family
-//     // 1th of main family or 0th of only compute family
+void VkApplication::selectQueueFamily()
+{
+    // 12. Query the selected device to cache the device queue family
+    // 1th of main family or 0th of only compute family
 
-//     uint32_t queueFamilyCount = 0;
-//     vkGetPhysicalDeviceQueueFamilyProperties(_selectedPhysicalDevice, &queueFamilyCount,
-//                                              nullptr);
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(_selectedPhysicalDevice, &queueFamilyCount,
+                                             nullptr);
 
-//     std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-//     vkGetPhysicalDeviceQueueFamilyProperties(_selectedPhysicalDevice, &queueFamilyCount,
-//                                              queueFamilies.data());
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(_selectedPhysicalDevice, &queueFamilyCount,
+                                             queueFamilies.data());
 
-//     for (uint32_t i = 0; i < queueFamilyCount; ++i)
-//     {
-//         auto &queueFamily = queueFamilies[i];
-//         if (queueFamily.queueCount == 0)
-//         {
-//             continue;
-//         }
+    for (uint32_t i = 0; i < queueFamilyCount; ++i)
+    {
+        auto &queueFamily = queueFamilies[i];
+        if (queueFamily.queueCount == 0)
+        {
+            continue;
+        }
 
-//         LOGI("Queue Family Index %d, flags %d, queue count %d",
-//              i,
-//              queueFamily.queueFlags,
-//              queueFamily.queueCount);
-//         // |: means or, both graphics and compute
-//         if ((queueFamily.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) ==
-//             (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT))
-//         {
-//             // Sparse memory bindings execute on a queue that includes the VK_QUEUE_SPARSE_BINDING_BIT bit
-//             // While some implementations may include VK_QUEUE_SPARSE_BINDING_BIT support in queue families that also include graphics and compute support
-//             ASSERT((queueFamily.queueFlags & VK_QUEUE_SPARSE_BINDING_BIT) ==
-//                        VK_QUEUE_SPARSE_BINDING_BIT,
-//                    "Sparse memory bindings is not supported");
-//             _graphicsComputeQueueFamilyIndex = i;
-//             _graphicsQueueIndex = 0;
-//             // separate graphics and compute queue
-//             if (queueFamily.queueCount > 1)
-//             {
-//                 _computeQueueFamilyIndex = i;
-//                 _computeQueueIndex = 1;
-//             }
-//             continue;
-//         }
-//         // compute only
-//         if ((queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) &&
-//             _computeQueueIndex == std::numeric_limits<uint32_t>::max())
-//         {
-//             _computeQueueFamilyIndex = i;
-//             _computeQueueIndex = 0;
-//         }
-//         if ((queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) == 0 &&
-//             (queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT))
-//         {
-//             _transferQueueFamilyIndex = i;
-//             continue;
-//         }
-//     }
-// }
+        log(Level::Info,
+            " Queue Family Index: ", i,
+            " Queue Flags: ", queueFamily.queueFlags,
+            " Queue Count: ", queueFamily.queueCount);
 
-// void VkApplication::selectFeatures()
-// {
-//     // query all features through single linked list
-//     // physicalFeatures2 --> indexing_features --> dynamicRenderingFeatures --> nullptr;
-//     vkGetPhysicalDeviceFeatures2(_selectedPhysicalDevice, &_physicalFeatures2);
+        // |: means or, both graphics and compute
+        if ((queueFamily.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) ==
+            (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT))
+        {
+            // Sparse memory bindings execute on a queue that includes the VK_QUEUE_SPARSE_BINDING_BIT bit
+            // While some implementations may include VK_QUEUE_SPARSE_BINDING_BIT support in queue families that also include graphics and compute support
+            ASSERT((queueFamily.queueFlags & VK_QUEUE_SPARSE_BINDING_BIT) ==
+                       VK_QUEUE_SPARSE_BINDING_BIT,
+                   "Sparse memory bindings is not supported");
+            _graphicsComputeQueueFamilyIndex = i;
+            _graphicsQueueIndex = 0;
+            // separate graphics and compute queue
+            if (queueFamily.queueCount > 1)
+            {
+                _computeQueueFamilyIndex = i;
+                _computeQueueIndex = 1;
+            }
+            continue;
+        }
+        // compute only
+        if ((queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) &&
+            _computeQueueIndex == std::numeric_limits<uint32_t>::max())
+        {
+            _computeQueueFamilyIndex = i;
+            _computeQueueIndex = 0;
+        }
+        if ((queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) == 0 &&
+            (queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT))
+        {
+            _transferQueueFamilyIndex = i;
+            continue;
+        }
+    }
+}
 
-//     // enable features
-//     VkPhysicalDeviceFeatures physicalDeviceFeatures{
-//         .independentBlend = VK_TRUE,
-//         .vertexPipelineStoresAndAtomics = VK_TRUE,
-//         .fragmentStoresAndAtomics = VK_TRUE,
-//     };
-//     VkPhysicalDeviceVulkan11Features enable11Features{
-//         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-//     };
+VkPhysicalDeviceFeatures VkApplication::sPhysicalDeviceFeatures = {
 
-//     VkPhysicalDeviceVulkan12Features enable12Features{
-//         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-//     };
+};
 
-//     VkPhysicalDeviceVulkan13Features enable13Features{
-//         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-//     };
-//     VkPhysicalDeviceFragmentDensityMapFeaturesEXT fragmentDensityMapFeatures{
-//         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT,
-//     };
+VkPhysicalDeviceFeatures2 VkApplication::sPhysicalDeviceFeatures2 = {
+    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+    .features = sPhysicalDeviceFeatures,
+};
 
-//     VkPhysicalDeviceFragmentDensityMapOffsetFeaturesQCOM fragmentDensityMapOffsetFeatures{
-//         .sType =
-//             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_OFFSET_FEATURES_QCOM,
-//     };
+VkPhysicalDeviceVulkan11Features VkApplication::sEnable11Features = {
+    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+};
 
-//     // for ray-tracing
-//     VkPhysicalDeviceAccelerationStructureFeaturesKHR accelStructFeatures{
-//         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
-//     };
+VkPhysicalDeviceVulkan12Features VkApplication::sEnable12Features = {
+    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+};
 
-//     VkPhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingPipelineFeatures{
-//         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
-//     };
+VkPhysicalDeviceVulkan13Features VkApplication::sEnable13Features = {
+    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+};
 
-//     VkPhysicalDeviceRayQueryFeaturesKHR rayQueryFeatures{
-//         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR,
-//     };
-//     // enable features for logical device
-//     // default
-//     // do we need these for defaults?
-//     //    enable12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
-//     //    enable12Features.shaderStorageImageArrayNonUniformIndexing = VK_TRUE;
-//     ////    enable12Features.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE; // cautious
-//     //    enable12Features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
-//     //    enable12Features.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
-//     //    enable12Features.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
-//     //    enable12Features.descriptorBindingPartiallyBound = VK_TRUE;
-//     //    enable12Features.descriptorBindingVariableDescriptorCount = VK_TRUE;
-//     //    enable12Features.descriptorIndexing = VK_TRUE;
-//     //    enable12Features.runtimeDescriptorArray = VK_TRUE;
-//     // enable indirect rendering
-//     //  enable11Features.shaderDrawParameters = VK_TRUE;
-//     //    enable12Features.drawIndirectCount = VK_TRUE;
-//     //    physicalDeviceFeatures.multiDrawIndirect = VK_TRUE;
-//     //    physicalDeviceFeatures.drawIndirectFirstInstance = VK_TRUE;
-//     // enable independent blending
-//     physicalDeviceFeatures.independentBlend = VK_TRUE;
-//     // enable only if physical device support it
-//     if (_vk11features.multiview)
-//     {
-//         enable11Features.multiview = VK_TRUE;
-//     }
-//     // enable16bitFloatFeature
-//     //   // enable11Features.storageBuffer16BitAccess = VK_TRUE;
-//     //    enable12Features.shaderFloat16 = VK_TRUE;
-//     //    // scalar layout
-//     //    enable12Features.scalarBlockLayout = VK_TRUE;
-//     // buffer device address feature
-//     //    enable12Features.bufferDeviceAddress = VK_TRUE;
-//     //    enable12Features.bufferDeviceAddressCaptureReplay = VK_TRUE;
-//     // bindless
-//     if (_bindlessSupported)
-//     {
-//         //        enable12Features.descriptorBindingPartiallyBound = VK_TRUE;
-//         //        enable12Features.runtimeDescriptorArray = VK_TRUE;
-//     }
-//     // dynamic rendering
-//     enable13Features.dynamicRendering = VK_TRUE;
-//     // maintainance 4
-//     enable13Features.maintenance4 = VK_TRUE;
-//     // sync2
-//     enable13Features.synchronization2 = VK_TRUE;
-//     if (_fragmentDensityMapFeature.fragmentDensityMap)
-//     {
-//         // enableFragmentDensityMapFeatures
-//         fragmentDensityMapFeatures.fragmentDensityMap = VK_TRUE;
-//     }
-//     if (_fragmentDensityMapOffsetFeature.fragmentDensityMapOffset)
-//     {
-//         // enableFragmentDensityMapFeatures
-//         fragmentDensityMapOffsetFeatures.fragmentDensityMapOffset = VK_TRUE;
-//     }
+VkPhysicalDeviceAccelerationStructureFeaturesKHR VkApplication::sAccelStructFeatures = {
+    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
+};
 
-//     // create the linkedlist for features
-//     _enabledDeviceFeatures = {
-//         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-//         .pNext = &enable12Features,
-//         .features = physicalDeviceFeatures,
-//     };
-//     //  enable11Features.pNext = &enable12Features;
-//     enable12Features.pNext = nullptr;
-//     //    enable12Features.pNext = &enable13Features;
+VkPhysicalDeviceRayTracingPipelineFeaturesKHR VkApplication::sRayTracingPipelineFeatures = {
+    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
+};
 
-//     // enable ray tracing features
-//     // if(isRayTracingSupported()) {
-//     accelStructFeatures.accelerationStructure = VK_TRUE;
-//     rayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
-//     rayQueryFeatures.rayQuery = VK_TRUE;
-//     accelStructFeatures.pNext = &rayTracingPipelineFeatures;
-//     rayTracingPipelineFeatures.pNext = &rayQueryFeatures;
-//     // enable13Features.pNext = &accelStructFeatures;
-//     //}
-//     if (_fragmentDensityMapFeature.fragmentDensityMap)
-//     {
-//     }
-//     if (_fragmentDensityMapOffsetFeature.fragmentDensityMapOffset)
-//     {
-//     }
+VkPhysicalDeviceRayQueryFeaturesKHR VkApplication::sRayQueryFeatures = {
+    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR,
+};
 
-//     //    VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeatures{
-//     //            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR};
-//     //    physicalFeatures2.pNext = &dynamicRenderingFeatures;
-//     //
-//     //    VkPhysicalDeviceDescriptorIndexingFeatures indexingFeatures{
-//     //            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES,
-//     //            &dynamicRenderingFeatures};
-//     //
-//     //    if (_bindlessSupported) {
-//     //        indexingFeatures.descriptorBindingPartiallyBound = VK_TRUE;
-//     //        indexingFeatures.runtimeDescriptorArray = VK_TRUE;
-//     //        indexingFeatures.pNext = &dynamicRenderingFeatures;
-//     //        physicalFeatures2.pNext = &indexingFeatures;
-//     //    }
+VkPhysicalDeviceFragmentDensityMapFeaturesEXT VkApplication::sFragmentDensityMapFeatures = {
+    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT,
+};
 
-//     //    if (_protectedMemory) {
-//     //        VkPhysicalDeviceProtectedMemoryFeatures protectedMemoryFeatures{
-//     //                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROTECTED_MEMORY_FEATURES,
-//     //                &indexingFeatures};
-//     //    }
-// }
+void VkApplication::selectFeatures()
+{
+    // query all features through single linked list
+    // physicalFeatures2 --> indexing_features --> dynamicRenderingFeatures --> nullptr;
+    // this gets the capabilities
+    vkGetPhysicalDeviceFeatures2(_selectedPhysicalDevice, &_physicalFeatures2);
 
-// void VkApplication::createLogicDevice()
-// {
-//     // enable 3 queue family for the logic device (compute/graphics/transfer)
-//     const float queuePriority[] = {1.0f, 1.0f};
-//     std::vector<VkDeviceQueueCreateInfo> queueInfos;
+ // enable features
+    sPhysicalDeviceFeatures.independentBlend = VK_TRUE;
+    sPhysicalDeviceFeatures.vertexPipelineStoresAndAtomics = VK_TRUE;
+    sPhysicalDeviceFeatures.fragmentStoresAndAtomics = VK_TRUE;
+    sPhysicalDeviceFeatures.multiDrawIndirect = VK_TRUE;
+    sPhysicalDeviceFeatures.drawIndirectFirstInstance = VK_TRUE;
+    sPhysicalDeviceFeatures.independentBlend = VK_TRUE;
 
-//     uint32_t queueCount = 0;
-//     VkDeviceQueueCreateInfo graphicsComputeQueue;
-//     graphicsComputeQueue.pNext = nullptr;
-//     graphicsComputeQueue.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-//     // https://github.com/KhronosGroup/Vulkan-Guide/blob/main/chapters/protected.adoc
-//     // must enable physical device feature
-//     // graphicsComputeQueue.flags = VK_DEVICE_QUEUE_CREATE_PROTECTED_BIT;
-//     graphicsComputeQueue.flags = 0x0;
-//     graphicsComputeQueue.queueFamilyIndex = _graphicsComputeQueueFamilyIndex;
-//     // within that queuefamily:[0(graphics), 1(compute)];
-//     graphicsComputeQueue.queueCount = (_graphicsComputeQueueFamilyIndex == _computeQueueFamilyIndex
-//                                            ? 2
-//                                            : 1);
-//     graphicsComputeQueue.pQueuePriorities = queuePriority;
-//     queueInfos.push_back(graphicsComputeQueue);
-//     // compute in different queueFamily
-//     if (_graphicsComputeQueueFamilyIndex != _computeQueueFamilyIndex)
-//     {
-//         VkDeviceQueueCreateInfo computeOnlyQueue;
-//         computeOnlyQueue.pNext = nullptr;
-//         computeOnlyQueue.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-//         computeOnlyQueue.flags = 0x0;
-//         computeOnlyQueue.queueFamilyIndex = _computeQueueFamilyIndex;
-//         computeOnlyQueue.queueCount = 1;
-//         computeOnlyQueue.pQueuePriorities = queuePriority; // only the first float will be used (c-style)
-//         queueInfos.push_back(computeOnlyQueue);
-//     }
+    if (_vk11features.shaderDrawParameters)
+    {
+        sEnable11Features.shaderDrawParameters = VK_TRUE;
+    }
 
-//     if (_transferQueueFamilyIndex != std::numeric_limits<uint32_t>::max())
-//     {
-//         VkDeviceQueueCreateInfo transferOnlyQueue;
-//         transferOnlyQueue.pNext = nullptr;
-//         transferOnlyQueue.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-//         transferOnlyQueue.flags = 0x0;
-//         transferOnlyQueue.queueFamilyIndex = _transferQueueFamilyIndex;
-//         transferOnlyQueue.queueCount = 1;
-//         const float queuePriority[] = {1.0f};
-//         transferOnlyQueue.pQueuePriorities = queuePriority;
-//         // crash the logic device creation
-//         queueInfos.push_back(transferOnlyQueue);
-//     }
+    sEnable11Features.storageBuffer16BitAccess = VK_TRUE;
 
-//     // descriptor_indexing
-//     // Descriptor indexing is also known by the term "bindless",
-//     // https://docs.vulkan.org/samples/latest/samples/extensions/descriptor_indexing/README.html
-//     LOGI("%d", queueInfos[0].queueCount);
-//     // LOGI("%d", queueInfos[1].queueCount);
-//     VkDeviceCreateInfo logicDeviceCreateInfo{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
-//     logicDeviceCreateInfo.queueCreateInfoCount = static_cast<uint32_t>(queueInfos.size());
-//     logicDeviceCreateInfo.pQueueCreateInfos = queueInfos.data();
-//     logicDeviceCreateInfo.enabledExtensionCount = _deviceExtensions.size();
-//     logicDeviceCreateInfo.ppEnabledExtensionNames = _deviceExtensions.data();
-//     logicDeviceCreateInfo.enabledLayerCount =
-//         static_cast<uint32_t>(_validationLayers.size());
-//     logicDeviceCreateInfo.ppEnabledLayerNames = _validationLayers.data();
-//     logicDeviceCreateInfo.pNext = &_physicalFeatures2;
+    sEnable12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+    sEnable12Features.shaderStorageImageArrayNonUniformIndexing = VK_TRUE;
+    sEnable12Features.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;
+    sEnable12Features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+    sEnable12Features.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
+    sEnable12Features.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
+    sEnable12Features.descriptorBindingPartiallyBound = VK_TRUE;
+    sEnable12Features.descriptorBindingVariableDescriptorCount = VK_TRUE;
+    sEnable12Features.descriptorIndexing = VK_TRUE;
+    sEnable12Features.runtimeDescriptorArray = VK_TRUE;
+    sEnable12Features.scalarBlockLayout = VK_TRUE;
+    sEnable12Features.bufferDeviceAddress = VK_TRUE;
+    sEnable12Features.bufferDeviceAddressCaptureReplay = VK_TRUE;
+    sEnable12Features.drawIndirectCount = VK_TRUE;
+    sEnable12Features.shaderFloat16 = VK_TRUE;
 
-//     VK_CHECK(
-//         vkCreateDevice(_selectedPhysicalDevice, &logicDeviceCreateInfo, nullptr,
-//                        &_logicalDevice));
-//     ASSERT(_logicalDevice, "Failed to create logic device");
+    sEnable13Features.dynamicRendering = VK_TRUE;
+    sEnable13Features.maintenance4 = VK_TRUE;
+    sEnable13Features.synchronization2 = VK_TRUE;
 
-//     setCorrlationId(_instance, VK_OBJECT_TYPE_INSTANCE, "Instance: testVulkan");
-//     setCorrlationId(_logicalDevice, VK_OBJECT_TYPE_DEVICE, "Logic Device");
-// }
+    // now is to toggle features selectively
+    // pointer chain: life cycle of those pointers must be static
+    _featureChain.push(sPhysicalDeviceFeatures2);
+    _featureChain.push(sEnable11Features);
+    _featureChain.push(sEnable12Features);
+    _featureChain.push(sEnable13Features);
+
+    if (checkRayTracingSupport())
+    {
+        sAccelStructFeatures.accelerationStructure = VK_TRUE;
+        sRayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
+        sRayQueryFeatures.rayQuery = VK_TRUE;
+        _featureChain.push(sAccelStructFeatures);
+        _featureChain.push(sRayTracingPipelineFeatures);
+        _featureChain.push(sRayQueryFeatures);
+    }
+
+    if (isMultiviewSupported())
+    {
+        // static, it is okay to modify after push to the chain
+        sEnable11Features.multiview = true;
+    }
+
+    if (isFragmentDensityMapSupported())
+    {
+        // static, it is okay to modify after push to the chain
+        sFragmentDensityMapFeatures.fragmentDensityMap = true;
+        _featureChain.push(sFragmentDensityMapFeatures);
+    }
+}
+
+void VkApplication::createLogicDevice()
+{
+    // enable 3 queue family for the logic device (compute/graphics/transfer)
+    const float queuePriority[] = {1.0f, 1.0f};
+    std::vector<VkDeviceQueueCreateInfo> queueInfos;
+
+    uint32_t queueCount = 0;
+    VkDeviceQueueCreateInfo graphicsComputeQueue;
+    graphicsComputeQueue.pNext = nullptr;
+    graphicsComputeQueue.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    // https://github.com/KhronosGroup/Vulkan-Guide/blob/main/chapters/protected.adoc
+    // must enable physical device feature
+    // graphicsComputeQueue.flags = VK_DEVICE_QUEUE_CREATE_PROTECTED_BIT;
+    graphicsComputeQueue.flags = 0x0;
+    graphicsComputeQueue.queueFamilyIndex = _graphicsComputeQueueFamilyIndex;
+    // within that queuefamily:[0(graphics), 1(compute)];
+    graphicsComputeQueue.queueCount = (_graphicsComputeQueueFamilyIndex == _computeQueueFamilyIndex
+                                           ? 2
+                                           : 1);
+    graphicsComputeQueue.pQueuePriorities = queuePriority;
+    queueInfos.push_back(graphicsComputeQueue);
+    // compute in different queueFamily
+    if (_graphicsComputeQueueFamilyIndex != _computeQueueFamilyIndex)
+    {
+        VkDeviceQueueCreateInfo computeOnlyQueue;
+        computeOnlyQueue.pNext = nullptr;
+        computeOnlyQueue.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        computeOnlyQueue.flags = 0x0;
+        computeOnlyQueue.queueFamilyIndex = _computeQueueFamilyIndex;
+        computeOnlyQueue.queueCount = 1;
+        computeOnlyQueue.pQueuePriorities = queuePriority; // only the first float will be used (c-style)
+        queueInfos.push_back(computeOnlyQueue);
+    }
+
+    if (_transferQueueFamilyIndex != std::numeric_limits<uint32_t>::max())
+    {
+        VkDeviceQueueCreateInfo transferOnlyQueue;
+        transferOnlyQueue.pNext = nullptr;
+        transferOnlyQueue.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        transferOnlyQueue.flags = 0x0;
+        transferOnlyQueue.queueFamilyIndex = _transferQueueFamilyIndex;
+        transferOnlyQueue.queueCount = 1;
+        const float queuePriority[] = {1.0f};
+        transferOnlyQueue.pQueuePriorities = queuePriority;
+        // crash the logic device creation
+        queueInfos.push_back(transferOnlyQueue);
+    }
+
+    // descriptor_indexing
+    // Descriptor indexing is also known by the term "bindless",
+    // https://docs.vulkan.org/samples/latest/samples/extensions/descriptor_indexing/README.html
+    VkDeviceCreateInfo logicDeviceCreateInfo{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+    logicDeviceCreateInfo.queueCreateInfoCount = static_cast<uint32_t>(queueInfos.size());
+    logicDeviceCreateInfo.pQueueCreateInfos = queueInfos.data();
+    logicDeviceCreateInfo.enabledExtensionCount = _deviceExtensions.size();
+    logicDeviceCreateInfo.ppEnabledExtensionNames = _deviceExtensions.data();
+    logicDeviceCreateInfo.enabledLayerCount =
+        static_cast<uint32_t>(_validationLayers.size());
+    logicDeviceCreateInfo.ppEnabledLayerNames = _validationLayers.data();
+    logicDeviceCreateInfo.pNext = _featureChain.header();
+
+    VK_CHECK(
+        vkCreateDevice(_selectedPhysicalDevice, &logicDeviceCreateInfo, nullptr,
+                       &_logicalDevice));
+    ASSERT(_logicalDevice, "Failed to create logic device");
+
+    setCorrlationId(_instance, _logicalDevice, VK_OBJECT_TYPE_INSTANCE, "Instance: testVulkan");
+    setCorrlationId(_logicalDevice, _logicalDevice, VK_OBJECT_TYPE_DEVICE, "Logic Device");
+
+    volkLoadDevice(_logicalDevice);
+}
 
 // void VkApplication::cacheCommandQueue()
 // {

@@ -148,12 +148,6 @@ private:
     void createLogicDevice();
     void cacheCommandQueue();
     void createVMA();
-    // capabilities of physical device
-    inline bool isRayTracingSupported() const
-    {
-        return (_accelStructFeature.accelerationStructure &&
-                _rayTracingFeature.rayTracingPipeline && _rayQueryFeature.rayQuery);
-    }
     // only depends on vk surface, one time deal
     void prepareSwapChainCreation();
     // called every resize();
@@ -184,6 +178,7 @@ private:
     void updateUniformBuffer(int currentFrameId);
     // bind resource to ds
     void bindResourceToDescriptorSets();
+    void createShaderModules();
     void createGraphicsPipeline();
     void createSwapChainFramebuffers();
     void createCommandPool();
@@ -367,11 +362,6 @@ private:
     VkQueue _presentationQueue{VK_NULL_HANDLE};
     VkQueue _sparseQueues{VK_NULL_HANDLE};
 
-    //    std::vector<VkQueue> _graphicsQueues;
-    //    std::vector<VkQueue> _computeQueues;
-    //    std::vector<VkQueue> _transferQueues;
-    //    std::vector<VkQueue> _sparseQueues;
-
     VmaAllocator _vmaAllocator{VK_NULL_HANDLE};
 
     VkExtent2D _swapChainExtent;
@@ -391,6 +381,9 @@ private:
     std::vector<VkFramebuffer> _swapChainFramebuffers;
 
     VkRenderPass _swapChainRenderPass{VK_NULL_HANDLE};
+
+    VkShaderModule _vsShaderModule{VK_NULL_HANDLE};
+    VkShaderModule _fsShaderModule{VK_NULL_HANDLE};
 
     // for shader data pass-in
     // for all the layout(set=_, binding=_) in all the shader stage

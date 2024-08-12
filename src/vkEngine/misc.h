@@ -47,7 +47,7 @@ void log(Level level, ARGS &&...args)
         VkResult err = x;                               \
         if (err)                                        \
         {                                               \
-            log(Error, "Detected Vulkan error:"s, err); \
+            log(Error, "Detected Vulkan error"); \
             abort();                                    \
         }                                               \
     } while (0)
@@ -142,3 +142,9 @@ class VkStructChain {
   int _currentIndex{0};
   void* _header{VK_NULL_HANDLE};
 };
+
+VkShaderModule createShaderModule(
+    VkDevice logicalDevice,
+    const std::string &filePath,
+    const std::string &entryPoint,
+    const std::string &correlationId);

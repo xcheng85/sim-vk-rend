@@ -1,7 +1,7 @@
 #define VK_NO_PROTOTYPES // for volk
 #define VOLK_IMPLEMENTATION
 
- #include "volk.h"
+#include "volk.h"
 #include <window.h>
 #include <assert.h>
 #include <iostream>
@@ -27,10 +27,11 @@
 #include <glslang/Public/ShaderLang.h>
 #include <glslang/SPIRV/GlslangToSpv.h>
 
-
 #include <application.h>
 
 bool gRunning = true;
+double gDt{0};
+uint64_t gLastFrame{0};
 
 int main(int argc, char **argv)
 {
@@ -58,10 +59,19 @@ int main(int argc, char **argv)
     VkApplication vkApp(window, _camera);
     vkApp.init();
 
-   // init();
-
+    // init();
+    gLastFrame = SDL_GetPerformanceCounter();
+    // gLastFrame = SDL_GetTicks();
     while (gRunning)
     {
+        auto currTime = SDL_GetPerformanceCounter();
+        //auto currTime = SDL_GetTicks();
+        //gDt = (currTime - gLastFrame) / 1000.0; // Convert to seconds.
+        // gDt = currTime - gLastFrame;
+        gDt = static_cast<double>(
+            (currTime - gLastFrame) / static_cast<double>(SDL_GetPerformanceFrequency()));
+        gLastFrame = currTime;
+
         vkApp.renderPerFrame();
         window.pollEvents();
     }

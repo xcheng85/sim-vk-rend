@@ -119,7 +119,8 @@ void VkApplication::teardown()
     vkDestroyPipelineLayout(_logicalDevice, _pipelineLayout, nullptr);
     vkDestroyRenderPass(_logicalDevice, _swapChainRenderPass, nullptr);
 
-    vmaDestroyAllocator(_vmaAllocator);
+   // CRASH
+   // //vmaDestroyAllocator(_vmaAllocator);
 
     vkDestroyDevice(_logicalDevice, nullptr);
     vkDestroyDebugUtilsMessengerEXT(_instance, _debugMessenger, nullptr);

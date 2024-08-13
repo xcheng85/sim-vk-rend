@@ -8,6 +8,8 @@
 using namespace std;
 
 extern bool gRunning;
+extern double gDt;
+extern uint64_t gLastFrame;
 
 class SDL_Window;
 
@@ -29,7 +31,7 @@ class Window
 {
 public:
     Window() = delete;
-    Window(void* configuration, Camera& camera) : _camera{camera}
+    Window(void *configuration, Camera &camera) : _camera{camera}
     {
         const auto &config = *(static_cast<WindowConfig *>(configuration));
         if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
@@ -63,6 +65,27 @@ public:
             case SDL_QUIT:
                 gRunning = false;
                 break;
+            case SDL_KEYDOWN:
+                switch (event.key.keysym.sym)
+                {
+                case SDLK_ESCAPE:
+                    gRunning = false;
+                    break;
+                case SDLK_w:
+                    _camera.handleKeyboardEvent(Camera::CameraActionType::FORWARD, gDt);
+                    break;
+                case SDLK_s:
+                    _camera.handleKeyboardEvent(Camera::CameraActionType::BACKWARD, gDt);
+                    break;
+                case SDLK_a:
+                    _camera.handleKeyboardEvent(Camera::CameraActionType::LEFT, gDt);
+                    break;
+                case SDLK_d:
+                    _camera.handleKeyboardEvent(Camera::CameraActionType::RIGHT, gDt);
+                    break;
+                }
+                break;
+
             // case SDL_MOUSEBUTTONDOWN:
             //     switch (event.button.button)
             //     {

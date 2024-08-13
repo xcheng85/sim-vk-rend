@@ -45,8 +45,8 @@ layout(set = 1, binding = 0) readonly buffer VertexBuffer {
 layout(set = 2, binding = 0) readonly buffer IndirectDrawBuffer {
     IndirectDrawDef1 indirectDraws[];
 };
-layout(set = 3, binding = 1) uniform texture2D BindlessImage2D[];
-layout(set = 3, binding = 2) uniform sampler BindlessSampler;
+layout(set = 3, binding = 0) uniform texture2D BindlessImage2D[];
+layout(set = 3, binding = 1) uniform sampler BindlessSampler;
 layout(set = 4, binding = 0) readonly buffer MaterialBuffer {
     Material materials[];
 };

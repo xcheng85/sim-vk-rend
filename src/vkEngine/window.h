@@ -3,6 +3,7 @@
 #include <format>
 #include <SDL.h>
 #include <SDL_vulkan.h>
+#include <camera.h>
 
 using namespace std;
 
@@ -27,7 +28,8 @@ struct WindowConfig
 class Window
 {
 public:
-    void init(void *configuration)
+    Window() = delete;
+    Window(void* configuration, Camera& camera) : _camera{camera}
     {
         const auto &config = *(static_cast<WindowConfig *>(configuration));
         if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
@@ -61,6 +63,39 @@ public:
             case SDL_QUIT:
                 gRunning = false;
                 break;
+            // case SDL_MOUSEBUTTONDOWN:
+            //     switch (event.button.button)
+            //     {
+            //     case SDL_BUTTON_LEFT:
+            //         SDL_ShowSimpleMessageBox(0, "Mouse", "Left button was pressed!", _window);
+            //         break;
+            //     case SDL_BUTTON_RIGHT:
+            //         SDL_ShowSimpleMessageBox(0, "Mouse", "Right button was pressed!", _window);
+            //         break;
+            //     default:
+            //         SDL_ShowSimpleMessageBox(0, "Mouse", "Some other button was pressed!", _window);
+            //         break;
+            //     }
+            //     break;
+            case SDL_MOUSEMOTION:
+                int mouseX = event.motion.x;
+                int mouseY = event.motion.y;
+
+                if (_firstMouseCursor)
+                {
+                    _lastMouseCursorX = mouseX;
+                    _lastMouseCursorY = mouseY;
+                    _firstMouseCursor = false;
+                }
+
+                float dx = mouseX - _lastMouseCursorX;
+                float dy = _lastMouseCursorY - mouseY; // screen space is opposite to camera space
+
+                _lastMouseCursorX = mouseX;
+                _lastMouseCursorY = mouseY;
+
+                _camera.handleMouseCursorEvent(dx, dy);
+                break;
             }
         }
     }
@@ -71,4 +106,8 @@ public:
 
 private:
     SDL_Window *_window;
+    Camera &_camera;
+    bool _firstMouseCursor{true};
+    int _lastMouseCursorX;
+    int _lastMouseCursorY;
 };

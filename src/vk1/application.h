@@ -129,7 +129,8 @@ class VkApplication
 {
 public:
     VkApplication() = delete;
-    VkApplication(const Window &window) : _window(window)
+    VkApplication(const Window &window, const Camera &camera) 
+    : _window(window), _camera(camera)
     {
     }
     void init();
@@ -216,6 +217,7 @@ private:
     void postHostDeviceIO();
 
     const Window &_window;
+    const Camera &_camera;
     bool _initialized{false};
     bool _enableValidationLayers{true};
     const std::vector<const char *> _validationLayers = {
@@ -503,14 +505,14 @@ private:
     //            -97.f                                 // initial yaw
     //    };
 
-    // BoxTextured.glb
-    Camera _camera{
-        vec3f(std::array{0.f, 0.f, 6.f}),    // pos
-        vec3f(std::array{0.f, 0.f, 0.f}),    // target -z
-        vec3f(std::array{0.0f, 1.0f, 1.0f}), // initial world up
-        0.0f,                                // initial pitch
-        -97.f                                // initial yaw
-    };
+    // // BoxTextured.glb
+    // Camera _camera{
+    //     vec3f(std::array{0.f, 0.f, 6.f}),    // pos
+    //     vec3f(std::array{0.f, 0.f, 0.f}),    // target -z
+    //     vec3f(std::array{0.0f, 1.0f, 1.0f}), // initial world up
+    //     0.0f,                                // initial pitch
+    //     -97.f                                // initial yaw
+    // };
 
     //  //Avacado.glb
     //    Camera _camera{

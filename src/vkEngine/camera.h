@@ -41,7 +41,7 @@ public:
         return _pos;
     }
 
-    mat4x4f viewTransformLH()
+    mat4x4f viewTransformLH() const
     {
         return ViewTransformLH4x4(_pos, _pos + _worldCameraFrontDir, _worldCameraUp);
     }

@@ -35,17 +35,17 @@ void VkApplication::init()
 
     // // application logic
     createGraphicsPipeline();
-    // createSwapChainFramebuffers();
-    // createCommandPool();
-    // createCommandBuffer();
-    // createPerFrameSyncObjects();
-    // // vao, textures and glb all depends on host-device io
-    // // one-time commandBuffer _uploadCmd
-    // preHostDeviceIO();
+    createSwapChainFramebuffers();
+    createCommandPool();
+    createCommandBuffer();
+    createPerFrameSyncObjects();
+    // vao, textures and glb all depends on host-device io
+    // one-time commandBuffer _uploadCmd
+    preHostDeviceIO();
     // loadVao();
-    // // must prior to bindResourceToDescriptorSets due to imageView
+    //  must prior to bindResourceToDescriptorSets due to imageView
     // loadTextures();
-    // loadGLB();
+    loadGLB();
     // postHostDeviceIO();
     // bindResourceToDescriptorSets();
 
@@ -681,12 +681,16 @@ void VkApplication::selectFeatures()
     vkGetPhysicalDeviceFeatures2(_selectedPhysicalDevice, &_physicalFeatures2);
 
     // enable features
-    sPhysicalDeviceFeatures.independentBlend = VK_TRUE;
-    sPhysicalDeviceFeatures.vertexPipelineStoresAndAtomics = VK_TRUE;
-    sPhysicalDeviceFeatures.fragmentStoresAndAtomics = VK_TRUE;
-    sPhysicalDeviceFeatures.multiDrawIndirect = VK_TRUE;
-    sPhysicalDeviceFeatures.drawIndirectFirstInstance = VK_TRUE;
-    sPhysicalDeviceFeatures.independentBlend = VK_TRUE;
+    sPhysicalDeviceFeatures2.features.independentBlend = VK_TRUE;
+    sPhysicalDeviceFeatures2.features.vertexPipelineStoresAndAtomics = VK_TRUE;
+    sPhysicalDeviceFeatures2.features.fragmentStoresAndAtomics = VK_TRUE;
+    sPhysicalDeviceFeatures2.features.multiDrawIndirect = VK_TRUE;
+    sPhysicalDeviceFeatures2.features.drawIndirectFirstInstance = VK_TRUE;
+    sPhysicalDeviceFeatures2.features.independentBlend = VK_TRUE;
+    //  vkCreateSampler(): pCreateInfo->anisotropyEnable
+    // wrong
+    // sPhysicalDeviceFeatures.samplerAnisotropy = VK_TRUE;
+    sPhysicalDeviceFeatures2.features.samplerAnisotropy = VK_TRUE;
 
     if (_vk11features.shaderDrawParameters)
     {
@@ -805,7 +809,9 @@ void VkApplication::createLogicDevice()
     logicDeviceCreateInfo.enabledLayerCount =
         static_cast<uint32_t>(_validationLayers.size());
     logicDeviceCreateInfo.ppEnabledLayerNames = _validationLayers.data();
+    // when using VkPhysicalDeviceFeatures2, pEnabledFeatures set to be nullptr;
     logicDeviceCreateInfo.pNext = _featureChain.header();
+    logicDeviceCreateInfo.pEnabledFeatures = nullptr;
 
     VK_CHECK(
         vkCreateDevice(_selectedPhysicalDevice, &logicDeviceCreateInfo, nullptr,
@@ -1748,17 +1754,17 @@ void VkApplication::createUniformBuffers()
 void VkApplication::createShaderModules()
 {
     // lateral for filepath in modern c++
-    const auto shadersPath = std::filesystem::current_path().parent_path() / "assets";
-    const auto vertexShaderPath = shadersPath / "indirectDraw.vert";
-    const auto fragShaderPath = shadersPath / "indirectDraw.frag";
+    const auto shadersPath = getAssetPath();
+    const auto vertexShaderPath = shadersPath + "/indirectDraw.vert";
+    const auto fragShaderPath = shadersPath + "/indirectDraw.frag";
     _vsShaderModule = createShaderModule(
         _logicalDevice,
-        vertexShaderPath.string(),
+        vertexShaderPath,
         "main",
         "indirectDraw.vert");
     _fsShaderModule = createShaderModule(
         _logicalDevice,
-        fragShaderPath.string(),
+        fragShaderPath,
         "main",
         "indirectDraw.frag");
 }
@@ -1909,7 +1915,7 @@ void VkApplication::createGraphicsPipeline()
     pipelineInfo.stageCount = 2;
     pipelineInfo.pStages = shaderStages;
     // with vao
-    //pipelineInfo.pVertexInputState = &vao;
+    // pipelineInfo.pVertexInputState = &vao;
     // without vao
     pipelineInfo.pVertexInputState = &vertexInputInfo;
     pipelineInfo.pInputAssemblyState = &inputAssembly;
@@ -1931,52 +1937,47 @@ void VkApplication::createGraphicsPipeline()
     // vkDestroyShaderModule(_logicalDevice, vertShaderModule, nullptr);
 }
 
-// void VkApplication::createSwapChainFramebuffers()
-// {
-//     _swapChainFramebuffers.resize(_swapChainImageViews.size());
-//     VkFramebufferCreateInfo framebufferInfo{};
-//     framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-//     framebufferInfo.renderPass = _swapChainRenderPass;
-//     framebufferInfo.attachmentCount = 1;
-//     framebufferInfo.width = _swapChainExtent.width;
-//     framebufferInfo.height = _swapChainExtent.height;
-//     framebufferInfo.layers = 1;
-//     for (size_t i = 0; i < _swapChainImageViews.size(); i++)
-//     {
-//         VkImageView attachments[] = {_swapChainImageViews[i]};
-//         framebufferInfo.pAttachments = attachments;
-//         VK_CHECK(vkCreateFramebuffer(_logicalDevice, &framebufferInfo, nullptr,
-//                                      &_swapChainFramebuffers[i]));
-//     }
-// }
+void VkApplication::createSwapChainFramebuffers()
+{
+    _swapChainFramebuffers.resize(_swapChainImageViews.size());
+    VkFramebufferCreateInfo framebufferInfo{};
+    framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    framebufferInfo.renderPass = _swapChainRenderPass;
+    framebufferInfo.attachmentCount = 1;
+    framebufferInfo.width = _swapChainExtent.width;
+    framebufferInfo.height = _swapChainExtent.height;
+    framebufferInfo.layers = 1;
+    for (size_t i = 0; i < _swapChainImageViews.size(); i++)
+    {
+        VkImageView attachments[] = {_swapChainImageViews[i]};
+        framebufferInfo.pAttachments = attachments;
+        VK_CHECK(vkCreateFramebuffer(_logicalDevice, &framebufferInfo, nullptr,
+                                     &_swapChainFramebuffers[i]));
+    }
+}
 
-// void VkApplication::createCommandPool()
-// {
-//     VkCommandPoolCreateInfo poolInfo{};
-//     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-//     // VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
-//     // since we want to
-//     // record a command
-//     // buffer every
-//     // frame, so we want
-//     // to be able to
-//     // reset and record
-//     // over it
-//     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-//     poolInfo.queueFamilyIndex = _graphicsComputeQueueFamilyIndex;
-//     VK_CHECK(vkCreateCommandPool(_logicalDevice, &poolInfo, nullptr, &_commandPool));
-// }
+void VkApplication::createCommandPool()
+{
+    VkCommandPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    // VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
+    // since we want to record a command buffer every frame, so we want to be able to
+    // reset and record over it
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    poolInfo.queueFamilyIndex = _graphicsComputeQueueFamilyIndex;
+    VK_CHECK(vkCreateCommandPool(_logicalDevice, &poolInfo, nullptr, &_commandPool));
+}
 
-// void VkApplication::createCommandBuffer()
-// {
-//     _commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-//     VkCommandBufferAllocateInfo allocInfo{};
-//     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-//     allocInfo.commandPool = _commandPool;
-//     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-//     allocInfo.commandBufferCount = _commandBuffers.size();
-//     VK_CHECK(vkAllocateCommandBuffers(_logicalDevice, &allocInfo, _commandBuffers.data()));
-// }
+void VkApplication::createCommandBuffer()
+{
+    _commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = _commandPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = _commandBuffers.size();
+    VK_CHECK(vkAllocateCommandBuffers(_logicalDevice, &allocInfo, _commandBuffers.data()));
+}
 
 // void VkApplication::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapChainImageIndex)
 // {
@@ -2065,27 +2066,27 @@ void VkApplication::createGraphicsPipeline()
 //     VK_CHECK(vkEndCommandBuffer(commandBuffer));
 // }
 
-// void VkApplication::createPerFrameSyncObjects()
-// {
-//     _imageCanAcquireSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-//     _imageRendereredSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-//     _inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+void VkApplication::createPerFrameSyncObjects()
+{
+    _imageCanAcquireSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    _imageRendereredSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    _inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
 
-//     VkSemaphoreCreateInfo semaphoreInfo{};
-//     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    VkSemaphoreCreateInfo semaphoreInfo{};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-//     VkFenceCreateInfo fenceInfo{};
-//     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-//     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-//     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
-//     {
-//         VK_CHECK(vkCreateSemaphore(_logicalDevice, &semaphoreInfo, nullptr,
-//                                    &_imageCanAcquireSemaphores[i]));
-//         VK_CHECK(vkCreateSemaphore(_logicalDevice, &semaphoreInfo, nullptr,
-//                                    &_imageRendereredSemaphores[i]));
-//         VK_CHECK(vkCreateFence(_logicalDevice, &fenceInfo, nullptr, &_inFlightFences[i]));
-//     }
-// }
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        VK_CHECK(vkCreateSemaphore(_logicalDevice, &semaphoreInfo, nullptr,
+                                   &_imageCanAcquireSemaphores[i]));
+        VK_CHECK(vkCreateSemaphore(_logicalDevice, &semaphoreInfo, nullptr,
+                                   &_imageRendereredSemaphores[i]));
+        VK_CHECK(vkCreateFence(_logicalDevice, &fenceInfo, nullptr, &_inFlightFences[i]));
+    }
+}
 
 bool VkApplication::checkValidationLayerSupport()
 {
@@ -2127,31 +2128,31 @@ bool VkApplication::checkValidationLayerSupport()
     return true;
 }
 
-// // create shared _uploadCmd and begin
-// void VkApplication::preHostDeviceIO()
-// {
-//     VkCommandBufferAllocateInfo allocInfo{};
-//     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-//     allocInfo.commandPool = _commandPool;
-//     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-//     allocInfo.commandBufferCount = 1;
-//     VK_CHECK(vkAllocateCommandBuffers(_logicalDevice, &allocInfo, &_uploadCmd));
+// create shared _uploadCmd and begin
+void VkApplication::preHostDeviceIO()
+{
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = _commandPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = 1;
+    VK_CHECK(vkAllocateCommandBuffers(_logicalDevice, &allocInfo, &_uploadCmd));
 
-//     VkCommandBufferBeginInfo cmdBufferBeginInfo{};
-//     cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-//     //  specifies that each recording of the command buffer will only be submitted once,
-//     //  and the command buffer will be reset and recorded again between each submission.
-//     cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-//     VK_CHECK(vkBeginCommandBuffer(_uploadCmd, &cmdBufferBeginInfo));
+    VkCommandBufferBeginInfo cmdBufferBeginInfo{};
+    cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    //  specifies that each recording of the command buffer will only be submitted once,
+    //  and the command buffer will be reset and recorded again between each submission.
+    cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    VK_CHECK(vkBeginCommandBuffer(_uploadCmd, &cmdBufferBeginInfo));
 
-//     VkFenceCreateInfo fenceInfo = {
-//         .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-//         .pNext = nullptr,
-//         .flags = 0, // VK_FENCE_CREATE_SIGNALED_BIT: signaled state
-//     };
-//     VkFence fence;
-//     VK_CHECK(vkCreateFence(_logicalDevice, &fenceInfo, nullptr, &_ioFence));
-// }
+    VkFenceCreateInfo fenceInfo = {
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0, // VK_FENCE_CREATE_SIGNALED_BIT: signaled state
+    };
+    VkFence fence;
+    VK_CHECK(vkCreateFence(_logicalDevice, &fenceInfo, nullptr, &_ioFence));
+}
 
 // // end recording of buffer.
 // // wait for completion using fence
@@ -2694,602 +2695,606 @@ bool VkApplication::checkValidationLayerSupport()
 //     //            VMA_MEMORY_USAGE_GPU_ONLY, "vertex"));
 // }
 
-// void VkApplication::loadGLB()
-// {
-//     std::string filename = getAssetPath() + "BoxTextured.glb";
+void VkApplication::loadGLB()
+{
+    std::string filename = getAssetPath() + "\\BoxTextured.glb";
 
-//     // Load GLB
-//     AAsset *glbAsset = AAssetManager_open(_assetManager, filename.c_str(), AASSET_MODE_BUFFER);
-//     size_t glbByteSize = AAsset_getLength(glbAsset);
-//     std::vector<char> glbContent;
-//     glbContent.resize(glbByteSize);
-//     AAsset_read(glbAsset, glbContent.data(), glbByteSize);
+    std::vector<char> glbContent;
 
-//     GltfBinaryIOReader reader;
-//     std::shared_ptr<Scene> scene = reader.read(glbContent);
-//     _numMeshes = scene->meshes.size();
+#if defined(__ANDROID__)
+    // Load GLB
+    AAsset *glbAsset = AAssetManager_open(_assetManager, filename.c_str(), AASSET_MODE_BUFFER);
+    size_t glbByteSize = AAsset_getLength(glbAsset);
+    glbContent.resize(glbByteSize);
+    AAsset_read(glbAsset, glbContent.data(), glbByteSize);
+#else
+    glbContent = readFile(filename, true);
+#endif
+    GltfBinaryIOReader reader;
+    std::shared_ptr<Scene> scene = reader.read(glbContent);
+    _numMeshes = scene->meshes.size();
 
-//     // check device feature supported
-//     if (_vk12features.bufferDeviceAddress)
-//     {
-//         {
-//             // ssbo for vertices
-//             auto bufferByteSize = scene->totalVerticesByteSize;
-//             _compositeVBSizeInByte = bufferByteSize;
-//             VkBufferUsageFlags bufferUsageFlag{
-//                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
-//                 //                    | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
-//                 | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT};
-//             VmaMemoryUsage memoryUsage{
-//                 VMA_MEMORY_USAGE_GPU_ONLY};
-//             VmaAllocation vmaCompositeVerticeBufferAllocation{nullptr};
-//             VkBufferCreateInfo bufferCreateInfo{
-//                 .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-//                 .size = bufferByteSize,
-//                 .usage = bufferUsageFlag,
-//             };
-//             // for device buffer
-//             // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
-//             const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
-//                 .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
-//                          VMA_ALLOCATION_CREATE_MAPPED_BIT,
-//                 .usage = memoryUsage,
-//                 .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT};
-//             VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
-//                                      &deviceBufferAllocationCreateInfo,
-//                                      &_compositeVB,
-//                                      &vmaCompositeVerticeBufferAllocation, nullptr));
-//         }
+    // check device feature supported
+    if (_vk12features.bufferDeviceAddress)
+    {
+        {
+            // ssbo for vertices
+            auto bufferByteSize = scene->totalVerticesByteSize;
+            _compositeVBSizeInByte = bufferByteSize;
+            VkBufferUsageFlags bufferUsageFlag{
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+                //                    | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
+                | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT};
+            VmaMemoryUsage memoryUsage{
+                VMA_MEMORY_USAGE_GPU_ONLY};
+            VmaAllocation vmaCompositeVerticeBufferAllocation{nullptr};
+            VkBufferCreateInfo bufferCreateInfo{
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size = bufferByteSize,
+                .usage = bufferUsageFlag,
+            };
+            // for device buffer
+            // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
+            const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
+                .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
+                         VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                .usage = memoryUsage,
+                .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT};
+            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
+                                     &deviceBufferAllocationCreateInfo,
+                                     &_compositeVB,
+                                     &vmaCompositeVerticeBufferAllocation, nullptr));
+        }
 
-//         {
-//             // ssbo for ib
-//             auto bufferByteSize = scene->totalIndexByteSize;
-//             _compositeIBSizeInByte = bufferByteSize;
-//             VkBufferUsageFlags bufferUsageFlag{
-//                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT};
-//             VmaMemoryUsage memoryUsage{
-//                 VMA_MEMORY_USAGE_GPU_ONLY};
+        {
+            // ssbo for ib
+            auto bufferByteSize = scene->totalIndexByteSize;
+            _compositeIBSizeInByte = bufferByteSize;
+            VkBufferUsageFlags bufferUsageFlag{
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT};
+            VmaMemoryUsage memoryUsage{
+                VMA_MEMORY_USAGE_GPU_ONLY};
 
-//             VmaAllocation vmaCompositeIndicesBufferAllocation{VK_NULL_HANDLE};
-//             VkBufferCreateInfo bufferCreateInfo{
-//                 .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-//                 .size = bufferByteSize,
-//                 .usage = bufferUsageFlag,
-//             };
+            VmaAllocation vmaCompositeIndicesBufferAllocation{VK_NULL_HANDLE};
+            VkBufferCreateInfo bufferCreateInfo{
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size = bufferByteSize,
+                .usage = bufferUsageFlag,
+            };
 
-//             // for device buffer
-//             // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
-//             const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
-//                 .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
-//                          VMA_ALLOCATION_CREATE_MAPPED_BIT,
-//                 .usage = memoryUsage,
-//                 .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT};
+            // for device buffer
+            // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
+            const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
+                .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
+                         VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                .usage = memoryUsage,
+                .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT};
 
-//             VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
-//                                      &deviceBufferAllocationCreateInfo,
-//                                      &_compositeIB,
-//                                      &vmaCompositeIndicesBufferAllocation, nullptr));
-//         }
+            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
+                                     &deviceBufferAllocationCreateInfo,
+                                     &_compositeIB,
+                                     &vmaCompositeIndicesBufferAllocation, nullptr));
+        }
 
-//         // upload data to buffer
-//         uint32_t currentVertexStartingIndex = 0u;
-//         uint32_t currentIndicesStartingIndex = 0u;
-//         // firstIndex of the composite index buffer for current draw
-//         uint32_t firstIndex = 0u;
-//         // offset into composite vertice buffer
-//         uint32_t vertexOffset = 0u;
-//         std::vector<IndirectDrawForVulkan> indirectDrawParams;
-//         indirectDrawParams.reserve(scene->meshes.size());
-//         uint32_t deviceCompositeVertexBufferOffsetInBytes = 0u;
-//         uint32_t deviceCompositeIndicesBufferOffsetInBytes = 0u;
-//         size_t meshId = 0;
-//         for (const auto &mesh : scene->meshes)
-//         {
-//             auto vertexByteSizeMesh = sizeof(Vertex) * mesh.vertices.size();
-//             auto vertexBufferPtr = reinterpret_cast<const void *>(mesh.vertices.data());
-//             // to upload data from host to device, needs stagingBuffer
-//             // create stagingVbForMesh to streaming only this mesh to device buffer
-//             VmaAllocation vmaStagingMeshVerticesBufferAllocation{nullptr};
-//             VkBufferCreateInfo verticeBufferCreateInfo{
-//                 .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-//                 .size = vertexByteSizeMesh,
-//                 .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-//                 .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-//             };
-//             const VmaAllocationCreateInfo stagingVerticeBufferAllocationCreateInfo = {
-//                 .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-//                          VMA_ALLOCATION_CREATE_MAPPED_BIT,
-//                 .usage = VMA_MEMORY_USAGE_CPU_ONLY,
-//                 .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-//                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT};
-//             VkBuffer stagingVerticeBuffer;
-//             VK_CHECK(vmaCreateBuffer(_vmaAllocator, &verticeBufferCreateInfo,
-//                                      &stagingVerticeBufferAllocationCreateInfo,
-//                                      &stagingVerticeBuffer,
-//                                      &vmaStagingMeshVerticesBufferAllocation, nullptr));
-//             _stagingVbForMesh.push_back(stagingVerticeBuffer);
-//             // copy vb from host to device, region
-//             void *mappedMemory{nullptr};
-//             VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingMeshVerticesBufferAllocation,
-//                                   &mappedMemory));
-//             memcpy(mappedMemory, vertexBufferPtr, vertexByteSizeMesh);
-//             vmaUnmapMemory(_vmaAllocator, vmaStagingMeshVerticesBufferAllocation);
-//             // cmd to copy from staging to device
-//             VkBufferCopy region{.srcOffset = 0,
-//                                 .dstOffset = deviceCompositeVertexBufferOffsetInBytes,
-//                                 .size = vertexByteSizeMesh};
-//             vkCmdCopyBuffer(_uploadCmd, stagingVerticeBuffer, _compositeVB, 1, &region);
+        // upload data to buffer
+        uint32_t currentVertexStartingIndex = 0u;
+        uint32_t currentIndicesStartingIndex = 0u;
+        // firstIndex of the composite index buffer for current draw
+        uint32_t firstIndex = 0u;
+        // offset into composite vertice buffer
+        uint32_t vertexOffset = 0u;
+        std::vector<IndirectDrawForVulkan> indirectDrawParams;
+        indirectDrawParams.reserve(scene->meshes.size());
+        uint32_t deviceCompositeVertexBufferOffsetInBytes = 0u;
+        uint32_t deviceCompositeIndicesBufferOffsetInBytes = 0u;
+        size_t meshId = 0;
+        for (const auto &mesh : scene->meshes)
+        {
+            auto vertexByteSizeMesh = sizeof(Vertex) * mesh.vertices.size();
+            auto vertexBufferPtr = reinterpret_cast<const void *>(mesh.vertices.data());
+            // to upload data from host to device, needs stagingBuffer
+            // create stagingVbForMesh to streaming only this mesh to device buffer
+            VmaAllocation vmaStagingMeshVerticesBufferAllocation{nullptr};
+            VkBufferCreateInfo verticeBufferCreateInfo{
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size = vertexByteSizeMesh,
+                .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            };
+            const VmaAllocationCreateInfo stagingVerticeBufferAllocationCreateInfo = {
+                .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                         VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                .usage = VMA_MEMORY_USAGE_CPU_ONLY,
+                .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT};
+            VkBuffer stagingVerticeBuffer;
+            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &verticeBufferCreateInfo,
+                                     &stagingVerticeBufferAllocationCreateInfo,
+                                     &stagingVerticeBuffer,
+                                     &vmaStagingMeshVerticesBufferAllocation, nullptr));
+            _stagingVbForMesh.push_back(stagingVerticeBuffer);
+            // copy vb from host to device, region
+            void *mappedMemory{nullptr};
+            VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingMeshVerticesBufferAllocation,
+                                  &mappedMemory));
+            memcpy(mappedMemory, vertexBufferPtr, vertexByteSizeMesh);
+            vmaUnmapMemory(_vmaAllocator, vmaStagingMeshVerticesBufferAllocation);
+            // cmd to copy from staging to device
+            VkBufferCopy region{.srcOffset = 0,
+                                .dstOffset = deviceCompositeVertexBufferOffsetInBytes,
+                                .size = vertexByteSizeMesh};
+            vkCmdCopyBuffer(_uploadCmd, stagingVerticeBuffer, _compositeVB, 1, &region);
 
-//             deviceCompositeVertexBufferOffsetInBytes += vertexByteSizeMesh;
+            deviceCompositeVertexBufferOffsetInBytes += vertexByteSizeMesh;
 
-//             // copy ib from host to device
-//             auto indicesByteSizeMesh = sizeof(uint32_t) * mesh.indices.size();
-//             auto indicesBufferPtr = reinterpret_cast<const void *>(mesh.indices.data());
+            // copy ib from host to device
+            auto indicesByteSizeMesh = sizeof(uint32_t) * mesh.indices.size();
+            auto indicesBufferPtr = reinterpret_cast<const void *>(mesh.indices.data());
 
-//             VmaAllocation vmaStagingMeshIndiceBufferAllocation{nullptr};
-//             VkBufferCreateInfo bufferCreateInfo{
-//                 .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-//                 .size = indicesByteSizeMesh,
-//                 .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-//                 .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-//             };
-//             const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
-//                 .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-//                          VMA_ALLOCATION_CREATE_MAPPED_BIT,
-//                 .usage = VMA_MEMORY_USAGE_CPU_ONLY,
-//                 .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-//                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT};
-//             VkBuffer stagingIndiceBuffer;
-//             VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo, &stagingAllocationCreateInfo,
-//                                      &stagingIndiceBuffer,
-//                                      &vmaStagingMeshIndiceBufferAllocation, nullptr));
-//             _stagingIbForMesh.push_back(stagingIndiceBuffer);
-//             // copy ib from host to device, region
-//             void *mappedMemoryForIB{nullptr};
-//             VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingMeshIndiceBufferAllocation,
-//                                   &mappedMemoryForIB));
-//             memcpy(mappedMemoryForIB, indicesBufferPtr, indicesByteSizeMesh);
-//             vmaUnmapMemory(_vmaAllocator, vmaStagingMeshIndiceBufferAllocation);
+            VmaAllocation vmaStagingMeshIndiceBufferAllocation{nullptr};
+            VkBufferCreateInfo bufferCreateInfo{
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size = indicesByteSizeMesh,
+                .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            };
+            const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
+                .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                         VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                .usage = VMA_MEMORY_USAGE_CPU_ONLY,
+                .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT};
+            VkBuffer stagingIndiceBuffer;
+            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo, &stagingAllocationCreateInfo,
+                                     &stagingIndiceBuffer,
+                                     &vmaStagingMeshIndiceBufferAllocation, nullptr));
+            _stagingIbForMesh.push_back(stagingIndiceBuffer);
+            // copy ib from host to device, region
+            void *mappedMemoryForIB{nullptr};
+            VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingMeshIndiceBufferAllocation,
+                                  &mappedMemoryForIB));
+            memcpy(mappedMemoryForIB, indicesBufferPtr, indicesByteSizeMesh);
+            vmaUnmapMemory(_vmaAllocator, vmaStagingMeshIndiceBufferAllocation);
 
-//             // cmd to copy from staging to device
-//             VkBufferCopy regionForIB{.srcOffset = 0,
-//                                      .dstOffset = deviceCompositeIndicesBufferOffsetInBytes,
-//                                      .size = indicesByteSizeMesh};
-//             vkCmdCopyBuffer(_uploadCmd, stagingIndiceBuffer, _compositeIB, 1, &regionForIB);
+            // cmd to copy from staging to device
+            VkBufferCopy regionForIB{.srcOffset = 0,
+                                     .dstOffset = deviceCompositeIndicesBufferOffsetInBytes,
+                                     .size = indicesByteSizeMesh};
+            vkCmdCopyBuffer(_uploadCmd, stagingIndiceBuffer, _compositeIB, 1, &regionForIB);
 
-//             deviceCompositeIndicesBufferOffsetInBytes += indicesByteSizeMesh;
-//             // reserve still needs push_back/emplace_back
-//             indirectDrawParams.emplace_back(IndirectDrawForVulkan{
-//                 .indexCount = uint32_t(mesh.indices.size()),
-//                 .instanceCount = 1,
-//                 .firstIndex = firstIndex,
-//                 .vertexOffset = static_cast<int>(vertexOffset),
-//                 .firstInstance = 0,
-//                 .meshId = static_cast<uint32_t>(meshId),
-//                 .materialIndex = static_cast<uint32_t>(mesh.materialIdx),
-//             });
-//             vertexOffset += mesh.vertices.size();
-//             firstIndex += mesh.indices.size();
-//             ++meshId;
-//         }
-//         // textures
-//         // 1. create image
-//         // 2. create image view
-//         // 3. upload through stage buffer
-//         for (const auto &texture : scene->textures)
-//         {
-//             const auto textureMipLevels = getMipLevelsCount(texture->width,
-//                                                             texture->height);
-//             const auto format{VK_FORMAT_R8G8B8A8_UNORM};
-//             VkImageCreateInfo imageCreateInfo{};
-//             imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-//             imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
-//             imageCreateInfo.format = format;
-//             imageCreateInfo.mipLevels = textureMipLevels;
-//             imageCreateInfo.arrayLayers = 1;
-//             imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-//             imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-//             // usage here: both dst and src as mipmap generation
-//             imageCreateInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-//             imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-//             imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-//             imageCreateInfo.extent = {static_cast<uint32_t>(texture->width),
-//                                       static_cast<uint32_t>(texture->height), 1};
-//             // no need for VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT, cpu does not need access
-//             const VmaAllocationCreateInfo allocCreateInfo = {
-//                 .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
-//                 .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
-//                 .priority = 1.0f,
-//             };
-//             VkImage glbImage;
-//             VmaAllocation glbImageAllocation;
-//             VkImageView glbImageView;
-//             VK_CHECK(vmaCreateImage(_vmaAllocator, &imageCreateInfo, &allocCreateInfo, &glbImage,
-//                                     &glbImageAllocation, nullptr));
-//             // image view
-//             VkImageViewCreateInfo imageViewInfo = {};
-//             imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-//             imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-//             imageViewInfo.format = format;
-//             // subresource range could limit miplevel and layer ranges, here all are open to access
-//             imageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-//             imageViewInfo.subresourceRange.baseMipLevel = 0;
-//             imageViewInfo.subresourceRange.baseArrayLayer = 0;
-//             imageViewInfo.subresourceRange.layerCount = 1;
-// #if defined(LINEAR_TILED_IMAGES)
-//             imageViewInfo.subresourceRange.levelCount = 1;
-// #else
-//             imageViewInfo.subresourceRange.levelCount = textureMipLevels;
-// #endif
-//             imageViewInfo.image = glbImage;
-//             VK_CHECK(vkCreateImageView(_logicalDevice, &imageViewInfo, nullptr, &glbImageView));
-//             this->_glbImages.emplace_back(glbImage);
-//             this->_glbImageAllocation.emplace_back(glbImageAllocation);
-//             this->_glbImageViews.emplace_back(glbImageView);
+            deviceCompositeIndicesBufferOffsetInBytes += indicesByteSizeMesh;
+            // reserve still needs push_back/emplace_back
+            indirectDrawParams.emplace_back(IndirectDrawForVulkan{
+                .indexCount = uint32_t(mesh.indices.size()),
+                .instanceCount = 1,
+                .firstIndex = firstIndex,
+                .vertexOffset = static_cast<int>(vertexOffset),
+                .firstInstance = 0,
+                .meshId = static_cast<uint32_t>(meshId),
+                .materialIndex = static_cast<uint32_t>(mesh.materialIdx),
+            });
+            vertexOffset += mesh.vertices.size();
+            firstIndex += mesh.indices.size();
+            ++meshId;
+        }
+        // textures
+        // 1. create image
+        // 2. create image view
+        // 3. upload through stage buffer
+        for (const auto &texture : scene->textures)
+        {
+            const auto textureMipLevels = getMipLevelsCount(texture->width,
+                                                            texture->height);
+            const auto format{VK_FORMAT_R8G8B8A8_UNORM};
+            VkImageCreateInfo imageCreateInfo{};
+            imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+            imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+            imageCreateInfo.format = format;
+            imageCreateInfo.mipLevels = textureMipLevels;
+            imageCreateInfo.arrayLayers = 1;
+            imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+            imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+            // usage here: both dst and src as mipmap generation
+            imageCreateInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+            imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            imageCreateInfo.extent = {static_cast<uint32_t>(texture->width),
+                                      static_cast<uint32_t>(texture->height), 1};
+            // no need for VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT, cpu does not need access
+            const VmaAllocationCreateInfo allocCreateInfo = {
+                .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+                .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+                .priority = 1.0f,
+            };
+            VkImage glbImage;
+            VmaAllocation glbImageAllocation;
+            VkImageView glbImageView;
+            VK_CHECK(vmaCreateImage(_vmaAllocator, &imageCreateInfo, &allocCreateInfo, &glbImage,
+                                    &glbImageAllocation, nullptr));
+            // image view
+            VkImageViewCreateInfo imageViewInfo = {};
+            imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            imageViewInfo.format = format;
+            // subresource range could limit miplevel and layer ranges, here all are open to access
+            imageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            imageViewInfo.subresourceRange.baseMipLevel = 0;
+            imageViewInfo.subresourceRange.baseArrayLayer = 0;
+            imageViewInfo.subresourceRange.layerCount = 1;
+#if defined(LINEAR_TILED_IMAGES)
+            imageViewInfo.subresourceRange.levelCount = 1;
+#else
+            imageViewInfo.subresourceRange.levelCount = textureMipLevels;
+#endif
+            imageViewInfo.image = glbImage;
+            VK_CHECK(vkCreateImageView(_logicalDevice, &imageViewInfo, nullptr, &glbImageView));
+            this->_glbImages.emplace_back(glbImage);
+            this->_glbImageAllocation.emplace_back(glbImageAllocation);
+            this->_glbImageViews.emplace_back(glbImageView);
 
-//             // staging buffer
-//             ASSERT(glbImageAllocation, "glbImageAllocation should be defined");
+            // staging buffer
+            ASSERT(glbImageAllocation, "glbImageAllocation should be defined");
 
-//             VmaAllocationInfo glbImageAllocationInfo;
-//             vmaGetAllocationInfo(_vmaAllocator, glbImageAllocation, &glbImageAllocationInfo);
-//             const auto stagingBufferSize = glbImageAllocationInfo.size;
+            VmaAllocationInfo glbImageAllocationInfo;
+            vmaGetAllocationInfo(_vmaAllocator, glbImageAllocation, &glbImageAllocationInfo);
+            const auto stagingBufferSize = glbImageAllocationInfo.size;
 
-//             VmaAllocation vmaStagingBufferAllocation{nullptr};
-//             VkBuffer glbImageStagingBuffer;
-//             VkBufferCreateInfo bufferCreateInfo{
-//                 .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-//                 .size = stagingBufferSize,
-//                 .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT, // for staging buffer
-//                 .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-//             };
-//             const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
-//                 .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-//                          VMA_ALLOCATION_CREATE_MAPPED_BIT,
-//                 .usage = VMA_MEMORY_USAGE_CPU_ONLY,
-//             };
-//             VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo, &stagingAllocationCreateInfo,
-//                                      &glbImageStagingBuffer,
-//                                      &vmaStagingBufferAllocation, nullptr));
-//             _glbImageStagingBuffer.emplace_back(glbImageStagingBuffer);
-//             if (vmaStagingBufferAllocation != nullptr)
-//             {
-//                 void *imageDataPtr{nullptr};
-//                 // format: VK_FORMAT_R8G8B8A8_UNORM took 4 bytes
-//                 const auto imageDataSizeInBytes = texture->width * texture->height * 1 * 4;
-//                 VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingBufferAllocation,
-//                                       &imageDataPtr));
-//                 memcpy(imageDataPtr, texture->data, imageDataSizeInBytes);
-//                 vmaUnmapMemory(_vmaAllocator, vmaStagingBufferAllocation);
-//                 // image layout from undefined to write dst
-//                 // transition layout
-//                 // barrier based on mip level, array layers
-//                 VkImageSubresourceRange subresourceRange = {};
-//                 subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-//                 subresourceRange.baseMipLevel = 0;
-//                 subresourceRange.levelCount = textureMipLevels;
-//                 subresourceRange.layerCount = 1;
+            VmaAllocation vmaStagingBufferAllocation{nullptr};
+            VkBuffer glbImageStagingBuffer;
+            VkBufferCreateInfo bufferCreateInfo{
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size = stagingBufferSize,
+                .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT, // for staging buffer
+                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            };
+            const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
+                .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                         VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                .usage = VMA_MEMORY_USAGE_CPU_ONLY,
+            };
+            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo, &stagingAllocationCreateInfo,
+                                     &glbImageStagingBuffer,
+                                     &vmaStagingBufferAllocation, nullptr));
+            _glbImageStagingBuffer.emplace_back(glbImageStagingBuffer);
+            if (vmaStagingBufferAllocation != nullptr)
+            {
+                void *imageDataPtr{nullptr};
+                // format: VK_FORMAT_R8G8B8A8_UNORM took 4 bytes
+                const auto imageDataSizeInBytes = texture->width * texture->height * 1 * 4;
+                VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingBufferAllocation,
+                                      &imageDataPtr));
+                memcpy(imageDataPtr, texture->data, imageDataSizeInBytes);
+                vmaUnmapMemory(_vmaAllocator, vmaStagingBufferAllocation);
+                // image layout from undefined to write dst
+                // transition layout
+                // barrier based on mip level, array layers
+                VkImageSubresourceRange subresourceRange = {};
+                subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                subresourceRange.baseMipLevel = 0;
+                subresourceRange.levelCount = textureMipLevels;
+                subresourceRange.layerCount = 1;
 
-//                 VkImageMemoryBarrier imageMemoryBarrier{};
-//                 imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-//                 imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-//                 imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-//                 imageMemoryBarrier.image = glbImage;
-//                 imageMemoryBarrier.subresourceRange = subresourceRange;
-//                 imageMemoryBarrier.srcAccessMask = VK_ACCESS_NONE; // 0: VK_ACCESS_NONE
-//                 imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-//                 imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-//                 // VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: written into
-//                 imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                VkImageMemoryBarrier imageMemoryBarrier{};
+                imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                imageMemoryBarrier.image = glbImage;
+                imageMemoryBarrier.subresourceRange = subresourceRange;
+                imageMemoryBarrier.srcAccessMask = VK_ACCESS_NONE; // 0: VK_ACCESS_NONE
+                imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                // VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: written into
+                imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
-//                 vkCmdPipelineBarrier(
-//                     _uploadCmd,
-//                     VK_PIPELINE_STAGE_HOST_BIT,
-//                     VK_PIPELINE_STAGE_TRANSFER_BIT,
-//                     0,
-//                     0, nullptr,
-//                     0, nullptr,
-//                     1, &imageMemoryBarrier);
-//                 // now image layout(usage) is writable
-//                 // staging buffer to device-local(image is device local memory)
-//                 VkBufferImageCopy bufferCopyRegion = {};
-//                 // mipmap level0: original copy
-//                 bufferCopyRegion.bufferOffset = 0;
-//                 // could be depth, stencil and color
-//                 bufferCopyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-//                 bufferCopyRegion.imageSubresource.mipLevel = 0;
-//                 bufferCopyRegion.imageSubresource.baseArrayLayer = 0;
-//                 bufferCopyRegion.imageSubresource.layerCount = 1;
-//                 bufferCopyRegion.imageOffset.x = bufferCopyRegion.imageOffset.y =
-//                     bufferCopyRegion.imageOffset.z = 0;
-//                 // primad mipmap hierachy
-//                 bufferCopyRegion.imageExtent.width = texture->width;
-//                 bufferCopyRegion.imageExtent.height = texture->height;
-//                 bufferCopyRegion.imageExtent.depth = 1;
-//                 vkCmdCopyBufferToImage(
-//                     _uploadCmd,
-//                     glbImageStagingBuffer,
-//                     glbImage,
-//                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-//                     1,
-//                     &bufferCopyRegion);
+                vkCmdPipelineBarrier(
+                    _uploadCmd,
+                    VK_PIPELINE_STAGE_HOST_BIT,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    0,
+                    0, nullptr,
+                    0, nullptr,
+                    1, &imageMemoryBarrier);
+                // now image layout(usage) is writable
+                // staging buffer to device-local(image is device local memory)
+                VkBufferImageCopy bufferCopyRegion = {};
+                // mipmap level0: original copy
+                bufferCopyRegion.bufferOffset = 0;
+                // could be depth, stencil and color
+                bufferCopyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                bufferCopyRegion.imageSubresource.mipLevel = 0;
+                bufferCopyRegion.imageSubresource.baseArrayLayer = 0;
+                bufferCopyRegion.imageSubresource.layerCount = 1;
+                bufferCopyRegion.imageOffset.x = bufferCopyRegion.imageOffset.y =
+                    bufferCopyRegion.imageOffset.z = 0;
+                // primad mipmap hierachy
+                bufferCopyRegion.imageExtent.width = texture->width;
+                bufferCopyRegion.imageExtent.height = texture->height;
+                bufferCopyRegion.imageExtent.depth = 1;
+                vkCmdCopyBufferToImage(
+                    _uploadCmd,
+                    glbImageStagingBuffer,
+                    glbImage,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    1,
+                    &bufferCopyRegion);
 
-//                 {
-//                     // generate mipmaps
-//                     // sample: texturemipmapgen
-//                     VkFormatProperties formatProperties;
-//                     vkGetPhysicalDeviceFormatProperties(_selectedPhysicalDevice,
-//                                                         format, &formatProperties);
-//                     ASSERT(formatProperties.optimalTilingFeatures &
-//                                VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT,
-//                            "Selected Physical Device cannot generate mipmaps");
+                {
+                    // generate mipmaps
+                    // sample: texturemipmapgen
+                    VkFormatProperties formatProperties;
+                    vkGetPhysicalDeviceFormatProperties(_selectedPhysicalDevice,
+                                                        format, &formatProperties);
+                    ASSERT(formatProperties.optimalTilingFeatures &
+                               VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT,
+                           "Selected Physical Device cannot generate mipmaps");
 
-//                     VkImageSubresourceRange subresourceRange = {};
-//                     subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-//                     subresourceRange.baseMipLevel = 0;
-//                     subresourceRange.levelCount = 1;
-//                     subresourceRange.baseArrayLayer = 0;
-//                     subresourceRange.layerCount = 1;
+                    VkImageSubresourceRange subresourceRange = {};
+                    subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                    subresourceRange.baseMipLevel = 0;
+                    subresourceRange.levelCount = 1;
+                    subresourceRange.baseArrayLayer = 0;
+                    subresourceRange.layerCount = 1;
 
-//                     VkImageMemoryBarrier imageMemoryBarrier{};
-//                     imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-//                     imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-//                     imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-//                     imageMemoryBarrier.image = glbImage;
-//                     imageMemoryBarrier.subresourceRange = subresourceRange;
-//                     imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-//                     imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-//                     imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-//                     imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+                    VkImageMemoryBarrier imageMemoryBarrier{};
+                    imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                    imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    imageMemoryBarrier.image = glbImage;
+                    imageMemoryBarrier.subresourceRange = subresourceRange;
+                    imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                    imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                    imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 
-//                     int32_t w = texture->width;
-//                     int32_t h = texture->height;
-//                     for (uint32_t i = 1; i <= textureMipLevels; ++i)
-//                     {
-//                         // Prepare current mip level as image blit source for next level
-//                         imageMemoryBarrier.subresourceRange.baseMipLevel = i - 1;
-//                         vkCmdPipelineBarrier(
-//                             _uploadCmd,
-//                             VK_PIPELINE_STAGE_TRANSFER_BIT,
-//                             VK_PIPELINE_STAGE_TRANSFER_BIT,
-//                             0,
-//                             0, nullptr,
-//                             0, nullptr,
-//                             1, &imageMemoryBarrier);
-//                         // level0 write, barrier, level0 read, level 1write, barrier
-//                         // level1 read, ....
-//                         if (i == textureMipLevels)
-//                         {
-//                             break;
-//                         }
-//                         const int32_t newW = w > 1 ? w >> 1 : w;
-//                         const int32_t newH = h > 1 ? h >> 1 : h;
+                    int32_t w = texture->width;
+                    int32_t h = texture->height;
+                    for (uint32_t i = 1; i <= textureMipLevels; ++i)
+                    {
+                        // Prepare current mip level as image blit source for next level
+                        imageMemoryBarrier.subresourceRange.baseMipLevel = i - 1;
+                        vkCmdPipelineBarrier(
+                            _uploadCmd,
+                            VK_PIPELINE_STAGE_TRANSFER_BIT,
+                            VK_PIPELINE_STAGE_TRANSFER_BIT,
+                            0,
+                            0, nullptr,
+                            0, nullptr,
+                            1, &imageMemoryBarrier);
+                        // level0 write, barrier, level0 read, level 1write, barrier
+                        // level1 read, ....
+                        if (i == textureMipLevels)
+                        {
+                            break;
+                        }
+                        const int32_t newW = w > 1 ? w >> 1 : w;
+                        const int32_t newH = h > 1 ? h >> 1 : h;
 
-//                         VkImageBlit imageBlit{};
-//                         imageBlit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-//                         imageBlit.srcSubresource.layerCount = 1;
-//                         imageBlit.srcSubresource.baseArrayLayer = 0;
-//                         imageBlit.srcSubresource.mipLevel = i - 1;
-//                         imageBlit.srcOffsets[0].x = imageBlit.srcOffsets[0].y = imageBlit.srcOffsets[0].z = 0;
-//                         imageBlit.srcOffsets[1].x = w;
-//                         imageBlit.srcOffsets[1].y = h;
-//                         imageBlit.srcOffsets[1].z = 1;
+                        VkImageBlit imageBlit{};
+                        imageBlit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                        imageBlit.srcSubresource.layerCount = 1;
+                        imageBlit.srcSubresource.baseArrayLayer = 0;
+                        imageBlit.srcSubresource.mipLevel = i - 1;
+                        imageBlit.srcOffsets[0].x = imageBlit.srcOffsets[0].y = imageBlit.srcOffsets[0].z = 0;
+                        imageBlit.srcOffsets[1].x = w;
+                        imageBlit.srcOffsets[1].y = h;
+                        imageBlit.srcOffsets[1].z = 1;
 
-//                         imageBlit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-//                         imageBlit.dstSubresource.layerCount = 1;
-//                         imageBlit.srcSubresource.baseArrayLayer = 0;
-//                         imageBlit.dstSubresource.mipLevel = i;
-//                         imageBlit.dstOffsets[1].x = newW;
-//                         imageBlit.dstOffsets[1].y = newH;
-//                         imageBlit.dstOffsets[1].z = 1;
+                        imageBlit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                        imageBlit.dstSubresource.layerCount = 1;
+                        imageBlit.srcSubresource.baseArrayLayer = 0;
+                        imageBlit.dstSubresource.mipLevel = i;
+                        imageBlit.dstOffsets[1].x = newW;
+                        imageBlit.dstOffsets[1].y = newH;
+                        imageBlit.dstOffsets[1].z = 1;
 
-//                         vkCmdBlitImage(_uploadCmd,
-//                                        glbImage,
-//                                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-//                                        glbImage,
-//                                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-//                                        1,
-//                                        &imageBlit,
-//                                        VK_FILTER_LINEAR);
-//                         w = newW;
-//                         h = newH;
-//                     }
-//                     // all mip layers are in TRANSFER_SRC --> SHADER_READ
-//                     const VkImageMemoryBarrier convertToShaderReadBarrier = {
-//                         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-//                         .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-//                         .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-//                         .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-//                         .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-//                         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-//                         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-//                         .image = glbImage,
-//                         .subresourceRange =
-//                             {
-//                                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-//                                 .baseMipLevel = 0,
-//                                 .levelCount = textureMipLevels,
-//                                 .baseArrayLayer = 0,
-//                                 .layerCount = 1,
-//                             },
+                        vkCmdBlitImage(_uploadCmd,
+                                       glbImage,
+                                       VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                       glbImage,
+                                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                       1,
+                                       &imageBlit,
+                                       VK_FILTER_LINEAR);
+                        w = newW;
+                        h = newH;
+                    }
+                    // all mip layers are in TRANSFER_SRC --> SHADER_READ
+                    const VkImageMemoryBarrier convertToShaderReadBarrier = {
+                        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+                        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+                        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .image = glbImage,
+                        .subresourceRange =
+                            {
+                                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                .baseMipLevel = 0,
+                                .levelCount = textureMipLevels,
+                                .baseArrayLayer = 0,
+                                .layerCount = 1,
+                            },
 
-//                     };
-//                     vkCmdPipelineBarrier(_uploadCmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-//                                          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0,
-//                                          nullptr,
-//                                          1, &convertToShaderReadBarrier);
-//                 }
-//             }
-//         }
-//         // sampler
-//         {
-//             VkSampler sampler;
-//             VkSamplerCreateInfo samplerCreateInfo = {};
-//             samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-//             samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
-//             samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
-//             samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-//             samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-//             samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-//             samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+                    };
+                    vkCmdPipelineBarrier(_uploadCmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0,
+                                         nullptr,
+                                         1, &convertToShaderReadBarrier);
+                }
+            }
+        }
+        // sampler
+        {
+            VkSampler sampler;
+            VkSamplerCreateInfo samplerCreateInfo = {};
+            samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+            samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
+            samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
+            samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+            samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 
-//             samplerCreateInfo.mipLodBias = 0.0f;
-//             samplerCreateInfo.compareOp = VK_COMPARE_OP_NEVER;
-//             samplerCreateInfo.minLod = 0.0f;
-// #if defined(LINEAR_TILED_IMAGES)
-//             samplerCreateInfo.maxLod = 0.0f;
-// #else
-//             samplerCreateInfo.maxLod = 10.f;
-// #endif
-//             // Enable anisotropic filtering
-//             if (_enabledDeviceFeatures.features.samplerAnisotropy)
-//             {
-//                 // Use max. level of anisotropy for this example
-//                 samplerCreateInfo.maxAnisotropy = _physicalDevicesProp1.limits.maxSamplerAnisotropy;
-//                 samplerCreateInfo.anisotropyEnable = VK_TRUE;
-//             }
-//             else
-//             {
-//                 samplerCreateInfo.maxAnisotropy = 1.0;
-//                 samplerCreateInfo.anisotropyEnable = VK_FALSE;
-//             }
-//             samplerCreateInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
-//             VK_CHECK(vkCreateSampler(_logicalDevice, &samplerCreateInfo, nullptr, &sampler));
-//             _glbSamplers.emplace_back(sampler);
-//         }
+            samplerCreateInfo.mipLodBias = 0.0f;
+            samplerCreateInfo.compareOp = VK_COMPARE_OP_NEVER;
+            samplerCreateInfo.minLod = 0.0f;
+#if defined(LINEAR_TILED_IMAGES)
+            samplerCreateInfo.maxLod = 0.0f;
+#else
+            samplerCreateInfo.maxLod = 10.f;
+#endif
+            // Enable anisotropic filtering
+            if (_enabledDeviceFeatures.features.samplerAnisotropy)
+            {
+                // Use max. level of anisotropy for this example
+                samplerCreateInfo.maxAnisotropy = _physicalDevicesProp1.limits.maxSamplerAnisotropy;
+                samplerCreateInfo.anisotropyEnable = VK_TRUE;
+            }
+            else
+            {
+                samplerCreateInfo.maxAnisotropy = 1.0;
+                samplerCreateInfo.anisotropyEnable = VK_FALSE;
+            }
+            samplerCreateInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+            VK_CHECK(vkCreateSampler(_logicalDevice, &samplerCreateInfo, nullptr, &sampler));
+            _glbSamplers.emplace_back(sampler);
+        }
 
-//         // packing materials into composite buffer
-//         const auto materialByteSize = sizeof(Material) * scene->materials.size();
-//         {
-//             // create device buffer
-//             auto bufferByteSize = materialByteSize;
-//             _compositeMatBSizeInByte = bufferByteSize;
-//             VkBufferUsageFlags bufferUsageFlag{
-//                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT};
-//             VmaMemoryUsage memoryUsage{
-//                 VMA_MEMORY_USAGE_GPU_ONLY};
+        // packing materials into composite buffer
+        const auto materialByteSize = sizeof(Material) * scene->materials.size();
+        {
+            // create device buffer
+            auto bufferByteSize = materialByteSize;
+            _compositeMatBSizeInByte = bufferByteSize;
+            VkBufferUsageFlags bufferUsageFlag{
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT};
+            VmaMemoryUsage memoryUsage{
+                VMA_MEMORY_USAGE_GPU_ONLY};
 
-//             VmaAllocation vmaMaterialBufferAllocation{VK_NULL_HANDLE};
-//             VkBufferCreateInfo bufferCreateInfo{
-//                 .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-//                 .size = bufferByteSize,
-//                 .usage = bufferUsageFlag,
-//             };
+            VmaAllocation vmaMaterialBufferAllocation{VK_NULL_HANDLE};
+            VkBufferCreateInfo bufferCreateInfo{
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size = bufferByteSize,
+                .usage = bufferUsageFlag,
+            };
 
-//             // for device buffer
-//             // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
-//             const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
-//                 .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
-//                          VMA_ALLOCATION_CREATE_MAPPED_BIT,
-//                 .usage = memoryUsage,
-//                 .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT};
-//             VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
-//                                      &deviceBufferAllocationCreateInfo,
-//                                      &_compositeMatB,
-//                                      &vmaMaterialBufferAllocation, nullptr));
-//         }
-//         {
-//             // create staging buffer
-//             auto materialBufferPtr = reinterpret_cast<const void *>(scene->materials.data());
-//             // staging buffer for matBuffer
-//             VmaAllocation vmaStagingMatBufferAllocation{nullptr};
-//             VkBufferCreateInfo bufferCreateInfo{
-//                 .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-//                 .size = materialByteSize,
-//                 .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-//                 .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-//             };
-//             const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
-//                 .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-//                          VMA_ALLOCATION_CREATE_MAPPED_BIT,
-//                 .usage = VMA_MEMORY_USAGE_CPU_ONLY,
-//                 .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-//                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT};
-//             VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
-//                                      &stagingAllocationCreateInfo,
-//                                      &_stagingMatBuffer,
-//                                      &vmaStagingMatBufferAllocation, nullptr));
-//             // copy matBuffer from host to device, region
-//             void *mappedMemoryForMatB{nullptr};
-//             VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingMatBufferAllocation,
-//                                   &mappedMemoryForMatB));
-//             memcpy(mappedMemoryForMatB, materialBufferPtr, materialByteSize);
-//             vmaUnmapMemory(_vmaAllocator, vmaStagingMatBufferAllocation);
-//         }
-//         {
-//             // cmd to copy from staging to device
-//             VkBufferCopy regionForMatB{.srcOffset = 0,
-//                                        .dstOffset = 0,
-//                                        .size = materialByteSize};
-//             vkCmdCopyBuffer(_uploadCmd, _stagingMatBuffer, _compositeMatB, 1, &regionForMatB);
-//         }
+            // for device buffer
+            // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
+            const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
+                .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
+                         VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                .usage = memoryUsage,
+                .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT};
+            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
+                                     &deviceBufferAllocationCreateInfo,
+                                     &_compositeMatB,
+                                     &vmaMaterialBufferAllocation, nullptr));
+        }
+        {
+            // create staging buffer
+            auto materialBufferPtr = reinterpret_cast<const void *>(scene->materials.data());
+            // staging buffer for matBuffer
+            VmaAllocation vmaStagingMatBufferAllocation{nullptr};
+            VkBufferCreateInfo bufferCreateInfo{
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size = materialByteSize,
+                .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            };
+            const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
+                .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                         VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                .usage = VMA_MEMORY_USAGE_CPU_ONLY,
+                .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT};
+            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
+                                     &stagingAllocationCreateInfo,
+                                     &_stagingMatBuffer,
+                                     &vmaStagingMatBufferAllocation, nullptr));
+            // copy matBuffer from host to device, region
+            void *mappedMemoryForMatB{nullptr};
+            VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingMatBufferAllocation,
+                                  &mappedMemoryForMatB));
+            memcpy(mappedMemoryForMatB, materialBufferPtr, materialByteSize);
+            vmaUnmapMemory(_vmaAllocator, vmaStagingMatBufferAllocation);
+        }
+        {
+            // cmd to copy from staging to device
+            VkBufferCopy regionForMatB{.srcOffset = 0,
+                                       .dstOffset = 0,
+                                       .size = materialByteSize};
+            vkCmdCopyBuffer(_uploadCmd, _stagingMatBuffer, _compositeMatB, 1, &regionForMatB);
+        }
 
-//         // packing for indirectDrawBuffer
-//         const auto indirectDrawBufferByteSize =
-//             sizeof(IndirectDrawForVulkan) * indirectDrawParams.size();
-//         {
-//             // create device buffer for indirectDraw
-//             auto bufferByteSize = indirectDrawBufferByteSize;
-//             _indirectDrawBSizeInByte = bufferByteSize;
-//             // both ib and indirectDraw buffer have flag: VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT
-//             VkBufferUsageFlags bufferUsageFlag{
-//                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT};
-//             VmaMemoryUsage memoryUsage{
-//                 VMA_MEMORY_USAGE_GPU_ONLY};
+        // packing for indirectDrawBuffer
+        const auto indirectDrawBufferByteSize =
+            sizeof(IndirectDrawForVulkan) * indirectDrawParams.size();
+        {
+            // create device buffer for indirectDraw
+            auto bufferByteSize = indirectDrawBufferByteSize;
+            _indirectDrawBSizeInByte = bufferByteSize;
+            // both ib and indirectDraw buffer have flag: VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT
+            VkBufferUsageFlags bufferUsageFlag{
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT};
+            VmaMemoryUsage memoryUsage{
+                VMA_MEMORY_USAGE_GPU_ONLY};
 
-//             VmaAllocation vmaIndirectDrawBufferAllocation{VK_NULL_HANDLE};
-//             VkBufferCreateInfo bufferCreateInfo{
-//                 .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-//                 .size = bufferByteSize,
-//                 .usage = bufferUsageFlag,
-//             };
+            VmaAllocation vmaIndirectDrawBufferAllocation{VK_NULL_HANDLE};
+            VkBufferCreateInfo bufferCreateInfo{
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size = bufferByteSize,
+                .usage = bufferUsageFlag,
+            };
 
-//             // for device buffer
-//             // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
-//             const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
-//                 .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
-//                          VMA_ALLOCATION_CREATE_MAPPED_BIT,
-//                 .usage = memoryUsage,
-//                 .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT};
-//             VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
-//                                      &deviceBufferAllocationCreateInfo,
-//                                      &_indirectDrawB,
-//                                      &vmaIndirectDrawBufferAllocation, nullptr));
-//         }
-//         {
-//             // create staging buffer
-//             auto indirectDrawBufferPtr = reinterpret_cast<const void *>(indirectDrawParams.data());
-//             // staging buffer for indirectDrawBuffer
-//             VmaAllocation vmaStagingIndirectDrawBufferAllocation{nullptr};
-//             VkBufferCreateInfo bufferCreateInfo{
-//                 .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-//                 .size = indirectDrawBufferByteSize,
-//                 .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-//                 .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-//             };
-//             const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
-//                 .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-//                          VMA_ALLOCATION_CREATE_MAPPED_BIT,
-//                 .usage = VMA_MEMORY_USAGE_CPU_ONLY,
-//                 .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-//                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT};
-//             VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
-//                                      &stagingAllocationCreateInfo,
-//                                      &_stagingIndirectDrawBuffer,
-//                                      &vmaStagingIndirectDrawBufferAllocation, nullptr));
-//             // copy IndirectDrawBuffer from host to device, region
-//             void *mappedMemoryForIndirectDrawBuffer{nullptr};
-//             VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingIndirectDrawBufferAllocation,
-//                                   &mappedMemoryForIndirectDrawBuffer));
-//             memcpy(mappedMemoryForIndirectDrawBuffer, indirectDrawBufferPtr,
-//                    indirectDrawBufferByteSize);
-//             vmaUnmapMemory(_vmaAllocator, vmaStagingIndirectDrawBufferAllocation);
-//         }
-//         {
-//             // cmd to copy from staging to device
-//             VkBufferCopy region{.srcOffset = 0,
-//                                 .dstOffset = 0,
-//                                 .size = indirectDrawBufferByteSize};
-//             vkCmdCopyBuffer(_uploadCmd, _stagingIndirectDrawBuffer, _indirectDrawB, 1, &region);
-//         }
-//     }
-// }
+            // for device buffer
+            // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
+            const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
+                .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
+                         VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                .usage = memoryUsage,
+                .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT};
+            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
+                                     &deviceBufferAllocationCreateInfo,
+                                     &_indirectDrawB,
+                                     &vmaIndirectDrawBufferAllocation, nullptr));
+        }
+        {
+            // create staging buffer
+            auto indirectDrawBufferPtr = reinterpret_cast<const void *>(indirectDrawParams.data());
+            // staging buffer for indirectDrawBuffer
+            VmaAllocation vmaStagingIndirectDrawBufferAllocation{nullptr};
+            VkBufferCreateInfo bufferCreateInfo{
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size = indirectDrawBufferByteSize,
+                .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            };
+            const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
+                .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                         VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                .usage = VMA_MEMORY_USAGE_CPU_ONLY,
+                .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT};
+            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
+                                     &stagingAllocationCreateInfo,
+                                     &_stagingIndirectDrawBuffer,
+                                     &vmaStagingIndirectDrawBufferAllocation, nullptr));
+            // copy IndirectDrawBuffer from host to device, region
+            void *mappedMemoryForIndirectDrawBuffer{nullptr};
+            VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingIndirectDrawBufferAllocation,
+                                  &mappedMemoryForIndirectDrawBuffer));
+            memcpy(mappedMemoryForIndirectDrawBuffer, indirectDrawBufferPtr,
+                   indirectDrawBufferByteSize);
+            vmaUnmapMemory(_vmaAllocator, vmaStagingIndirectDrawBufferAllocation);
+        }
+        {
+            // cmd to copy from staging to device
+            VkBufferCopy region{.srcOffset = 0,
+                                .dstOffset = 0,
+                                .size = indirectDrawBufferByteSize};
+            vkCmdCopyBuffer(_uploadCmd, _stagingIndirectDrawBuffer, _indirectDrawB, 1, &region);
+        }
+    }
+}

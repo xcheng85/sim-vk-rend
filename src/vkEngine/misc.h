@@ -41,15 +41,15 @@ void log(Level level, ARGS &&...args)
         assert(expr);         \
     }
 
-#define VK_CHECK(x)                                     \
-    do                                                  \
-    {                                                   \
-        VkResult err = x;                               \
-        if (err)                                        \
-        {                                               \
+#define VK_CHECK(x)                              \
+    do                                           \
+    {                                            \
+        VkResult err = x;                        \
+        if (err)                                 \
+        {                                        \
             log(Error, "Detected Vulkan error"); \
-            abort();                                    \
-        }                                               \
+            abort();                             \
+        }                                        \
     } while (0)
 
 std::string getAssetPath();
@@ -114,34 +114,38 @@ inline uint32_t getMipLevelsCount(uint32_t w, uint32_t h)
 }
 
 template <size_t CHAIN_SIZE = 18>
-class VkStructChain {
- public:
-  VkStructChain() = default;
-  VkStructChain(const VkStructChain&) = delete;  
-  VkStructChain& operator=(const VkStructChain&) = delete;
-  VkStructChain(VkStructChain&&) noexcept = default;
-  VkStructChain& operator=(VkStructChain&&) noexcept = default;
+class VkStructChain
+{
+public:
+    VkStructChain() = default;
+    VkStructChain(const VkStructChain &) = delete;
+    VkStructChain &operator=(const VkStructChain &) = delete;
+    VkStructChain(VkStructChain &&) noexcept = default;
+    VkStructChain &operator=(VkStructChain &&) noexcept = default;
 
-  auto& push(auto newVKStruct) {
-    ASSERT(_currentIndex < CHAIN_SIZE, "VkFeatureChain is full");
-    _vkStructs[_currentIndex] = newVKStruct;
+    auto &push(auto newVKStruct)
+    {
+        ASSERT(_currentIndex < CHAIN_SIZE, "VkFeatureChain is full");
+        _vkStructs[_currentIndex] = newVKStruct;
 
-    auto& newHeader = std::any_cast<decltype(newVKStruct)&>(_vkStructs[_currentIndex]);
-    // pNext is vulkan thing
-    // Replaces the value of obj with new_value and returns the old value of obj.
-    newHeader.pNext = std::exchange(_header, &newHeader);
-    _currentIndex++;
+        auto &newHeader = std::any_cast<decltype(newVKStruct) &>(_vkStructs[_currentIndex]);
+        // pNext is vulkan thing
+        // Replaces the value of obj with new_value and returns the old value of obj.
+        newHeader.pNext = std::exchange(_header, &newHeader);
+        _currentIndex++;
 
-    return newHeader;
-  }
+        return newHeader;
+    }
 
-  [[nodiscard]] void* header() const { return _header; };
+    [[nodiscard]] void *header() const { return _header; };
 
- private:
-  std::array<std::any, CHAIN_SIZE> _vkStructs;
-  int _currentIndex{0};
-  void* _header{VK_NULL_HANDLE};
+private:
+    std::array<std::any, CHAIN_SIZE> _vkStructs;
+    int _currentIndex{0};
+    void *_header{VK_NULL_HANDLE};
 };
+
+std::vector<char> readFile(const std::string &filePath, bool isBinary = true);
 
 VkShaderModule createShaderModule(
     VkDevice logicalDevice,

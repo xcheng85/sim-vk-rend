@@ -16,7 +16,8 @@ std::string getAssetPath()
 #if defined(VK_USE_PLATFORM_ANDROID_KHR)
     return "";
 #else
-    return "./../assets/";
+    const auto path = std::filesystem::current_path().parent_path() / "assets";
+    return path.string();
 #endif
 }
 
@@ -111,8 +112,8 @@ std::vector<char> glslToSpirv(const std::vector<char> &shaderText,
     DirStackFileIncluder includer;
     std::vector<std::string> IncludeDirectoryList;
 
-    const auto sharedShaderPath = std::filesystem::current_path().parent_path() / "assets";
-    IncludeDirectoryList.push_back(sharedShaderPath.string());
+    const auto sharedShaderPath = getAssetPath();
+    IncludeDirectoryList.push_back(sharedShaderPath);
 
     std::for_each(IncludeDirectoryList.rbegin(), IncludeDirectoryList.rend(), [&includer](const std::string &dir)
                   { includer.pushExternalLocalDirectory(dir); });

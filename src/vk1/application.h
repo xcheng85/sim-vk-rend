@@ -411,7 +411,7 @@ private:
     std::vector<VkDescriptorSet> _descriptorSetsForUbo;
     VkDescriptorSet _descriptorSetsForTextureSampler;
     // for vb
-    VkDescriptorSet _descriptorSetsForGlbSSBO;
+    VkDescriptorSet _descriptorSetsForVerticesBuffer;
     // for indirectDrawBuffer
     VkDescriptorSet _descriptorSetsForIndirectDrawBuffer;
     // for glb textures
@@ -448,9 +448,9 @@ private:
     // vao, vbo, index buffer
     uint32_t _indexCount{0};
     // for vkCmdBindVertexBuffers and vkCmdBindIndexBuffer
-    VkBuffer _deviceVb, _deviceIb;
+    VkBuffer _deviceVb{VK_NULL_HANDLE}, _deviceIb{VK_NULL_HANDLE};
     // need to destroy staging buffer when io is completed
-    VkBuffer _stagingVb, _stagingIb;
+    VkBuffer _stagingVb{VK_NULL_HANDLE}, _stagingIb{VK_NULL_HANDLE};
 
     // host-device io (during initialization)
     VkCommandBuffer _uploadCmd;
@@ -461,14 +461,15 @@ private:
     VkImage _image{VK_NULL_HANDLE};
     VkSampler _sampler{VK_NULL_HANDLE};
     VmaAllocation _vmaImageAllocation{VK_NULL_HANDLE};
-    VkBuffer _stagingImageBuffer;
+    VkBuffer _stagingImageBuffer{VK_NULL_HANDLE};
 
     // glb scene
     // a lot of stageBuffers
     vector<VkBuffer> _stagingVbForMesh;
     vector<VkBuffer> _stagingIbForMesh;
-    VkBuffer _stagingMatBuffer;
-    VkBuffer _stagingIndirectDrawBuffer;
+    VkBuffer _stagingIndirectDrawBuffer{VK_NULL_HANDLE};
+    VkBuffer _stagingMatBuffer{VK_NULL_HANDLE};
+
     // device buffer
     VkBuffer _compositeVB{VK_NULL_HANDLE};
     VkBuffer _compositeIB{VK_NULL_HANDLE};

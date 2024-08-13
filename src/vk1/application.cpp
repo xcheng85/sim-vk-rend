@@ -46,8 +46,8 @@ void VkApplication::init()
     //  must prior to bindResourceToDescriptorSets due to imageView
     // loadTextures();
     loadGLB();
-    // postHostDeviceIO();
-    // bindResourceToDescriptorSets();
+    postHostDeviceIO();
+    bindResourceToDescriptorSets();
 
     _initialized = true;
 }
@@ -1391,7 +1391,7 @@ void VkApplication::allocateDescriptorSets()
 
         VK_CHECK(
             vkAllocateDescriptorSets(_logicalDevice, &allocInfo,
-                                     &_descriptorSetsForGlbSSBO));
+                                     &_descriptorSetsForVerticesBuffer));
     }
 
     {
@@ -1531,197 +1531,174 @@ void VkApplication::createUniformBuffers()
 //     vmaUnmapMemory(_vmaAllocator, _vmaAllocations[currentFrameId]);
 // }
 
-// void VkApplication::bindResourceToDescriptorSets()
-// {
-//     // for ubo
-//     ASSERT(_descriptorSetsForUbo.size() == MAX_FRAMES_IN_FLIGHT,
-//            "ubo descriptor set has frame_in_flight");
-//     // extra: 1. texture+sampler, 2. ssbo for vb, 3. ssbo for indirectdraw
-//     // 4. textures,
-//     // 5. samplers
-//     // 6. ssbo for materials
-//     uint32_t writeDescriptorSetCount{MAX_FRAMES_IN_FLIGHT + 6};
-//     _writeDescriptorSetBundle.reserve(writeDescriptorSetCount);
+void VkApplication::bindResourceToDescriptorSets()
+{
+    // for ubo
+    ASSERT(_descriptorSetsForUbo.size() == MAX_FRAMES_IN_FLIGHT, "ubo descriptor set has frame_in_flight");
+    // extra: 
+    // 1. ssbo for vb
+    // 2. ssbo for indirectdraw
+    // 3. textures + samplers
+    // 4. ssbo for materials
+    uint32_t writeDescriptorSetCount{MAX_FRAMES_IN_FLIGHT + 4};
+    _writeDescriptorSetBundle.reserve(writeDescriptorSetCount);
 
-//     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-//     {
-//         VkDescriptorBufferInfo bufferInfo{};
-//         bufferInfo.buffer = _uniformBuffers[i];
-//         bufferInfo.offset = 0;
-//         bufferInfo.range = sizeof(UniformDataDef1);
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = _uniformBuffers[i];
+        bufferInfo.offset = 0;
+        bufferInfo.range = sizeof(UniformDataDef1);
 
-//         _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
-//             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-//             .dstSet = _descriptorSetsForUbo[i],
-//             .dstBinding = 0,
-//             .dstArrayElement = 0,
-//             .descriptorCount = 1,
-//             .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-//             .pImageInfo = nullptr,
-//             .pBufferInfo = &bufferInfo,
-//             .pTexelBufferView = VK_NULL_HANDLE,
-//         });
-//     }
+        _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = _descriptorSetsForUbo[i],
+            .dstBinding = 0,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .pImageInfo = nullptr,
+            .pBufferInfo = &bufferInfo,
+            .pTexelBufferView = VK_NULL_HANDLE,
+        });
+    }
 
-//     // for texture + sampler
-//     {
-//         VkDescriptorImageInfo imageInfo{};
-//         // images are never directly accessed by the shader
-//         // imageInfo.imageView = _imageView;
-//         imageInfo.imageView = _glbImageViews[0];
-//         imageInfo.sampler = _sampler;
-//         // The current usage of image: shader read
-//         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    // for glb's vb
+    {
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = _compositeVB;
+        bufferInfo.offset = 0;
+        bufferInfo.range = _compositeVBSizeInByte;
 
-//         _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
-//             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-//             .dstSet = _descriptorSetsForTextureSampler,
-//             .dstBinding = 0,
-//             .dstArrayElement = 0,
-//             .descriptorCount = 1,
-//             .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-//             .pImageInfo = &imageInfo,
-//             .pBufferInfo = nullptr,
-//         });
-//     }
+        _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = _descriptorSetsForVerticesBuffer,
+            .dstBinding = 0,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .pImageInfo = nullptr,
+            .pBufferInfo = &bufferInfo,
+        });
+    }
 
-//     // for glb's vb
-//     {
-//         VkDescriptorBufferInfo bufferInfo{};
-//         bufferInfo.buffer = _compositeVB;
-//         bufferInfo.offset = 0;
-//         bufferInfo.range = _compositeVBSizeInByte;
+    // glb indirect draw
+    {
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = _indirectDrawB;
+        bufferInfo.offset = 0;
+        bufferInfo.range = _indirectDrawBSizeInByte;
 
-//         _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
-//             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-//             .dstSet = _descriptorSetsForGlbSSBO,
-//             .dstBinding = 0,
-//             .dstArrayElement = 0,
-//             .descriptorCount = 1,
-//             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-//             .pImageInfo = nullptr,
-//             .pBufferInfo = &bufferInfo,
-//         });
-//     }
+        _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = _descriptorSetsForIndirectDrawBuffer,
+            .dstBinding = 0,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .pImageInfo = nullptr,
+            .pBufferInfo = &bufferInfo,
+        });
+    }
 
-//     // glb indirect draw
-//     {
-//         VkDescriptorBufferInfo bufferInfo{};
-//         bufferInfo.buffer = _indirectDrawB;
-//         bufferInfo.offset = 0;
-//         bufferInfo.range = _indirectDrawBSizeInByte;
+    // for glb textures
+    {
+        VkDescriptorImageInfo imageInfo;
+        imageInfo.sampler = VK_NULL_HANDLE;
+        imageInfo.imageView = _glbImageViews[0];
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-//         _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
-//             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-//             .dstSet = _descriptorSetsForIndirectDrawBuffer,
-//             .dstBinding = 0,
-//             .dstArrayElement = 0,
-//             .descriptorCount = 1,
-//             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-//             .pImageInfo = nullptr,
-//             .pBufferInfo = &bufferInfo,
-//         });
-//     }
+        // std::vector<VkDescriptorImageInfo> imageInfos;
+        // imageInfos.push_back(imageInfo);
 
-//     // for glb textures
-//     {
-//         VkDescriptorImageInfo imageInfo;
-//         imageInfo.sampler = VK_NULL_HANDLE;
-//         imageInfo.imageView = _glbImageViews[0];
-//         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = _descriptorSetsForTextureAndSampler,
+            .dstBinding = 0,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+            .pImageInfo = &imageInfo,
+            .pBufferInfo = nullptr,
+        });
 
-//         // std::vector<VkDescriptorImageInfo> imageInfos;
-//         // imageInfos.push_back(imageInfo);
+        //        const auto imageCt = _glbImageViews.size();
+        //        std::vector<VkDescriptorImageInfo> imageInfos;
+        //        imageInfos.reserve(imageCt);
+        //        for (const auto &imageView: _glbImageViews) {
+        //            imageInfos.emplace_back(VkDescriptorImageInfo{
+        //                    .sampler = VK_NULL_HANDLE,
+        //                    .imageView = imageView,
+        //                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        //            });
+        //        }
+        //
+        //        _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
+        //                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        //                .dstSet = _descriptorSetsForTextureAndSampler,
+        //                .dstBinding = 1,
+        //                .dstArrayElement = 0,
+        //                .descriptorCount = static_cast<uint32_t>(imageInfos.size()),
+        //                .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+        //                .pImageInfo = imageInfos.data(),
+        //                .pBufferInfo = nullptr,
+        //        });
+    }
 
-//         _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
-//             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-//             .dstSet = _descriptorSetsForTextureAndSampler,
-//             .dstBinding = 1,
-//             .dstArrayElement = 0,
-//             .descriptorCount = 1,
-//             .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-//             .pImageInfo = &imageInfo,
-//             .pBufferInfo = nullptr,
-//         });
+    // for glb samplers
+    {
+        VkDescriptorImageInfo samplerInfo;
+        samplerInfo.sampler = _glbSamplers[0];
+        samplerInfo.imageView = VK_NULL_HANDLE;
+        samplerInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        //
+        //        const auto samplersCt = _glbSamplers.size();
+        //        std::vector<VkDescriptorImageInfo> samplerInfos;
+        //        samplerInfos.reserve(samplersCt);
+        //        for (const auto &sampler: _glbSamplers) {
+        //            samplerInfos.emplace_back(VkDescriptorImageInfo{
+        //                    .sampler = sampler,
+        //                    .imageView = VK_NULL_HANDLE,
+        //                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        //            });
+        //        }
+        _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = _descriptorSetsForTextureAndSampler,
+            .dstBinding = 1,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
+            .pImageInfo = &samplerInfo,
+            .pBufferInfo = nullptr,
+        });
+    }
 
-//         //        const auto imageCt = _glbImageViews.size();
-//         //        std::vector<VkDescriptorImageInfo> imageInfos;
-//         //        imageInfos.reserve(imageCt);
-//         //        for (const auto &imageView: _glbImageViews) {
-//         //            imageInfos.emplace_back(VkDescriptorImageInfo{
-//         //                    .sampler = VK_NULL_HANDLE,
-//         //                    .imageView = imageView,
-//         //                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-//         //            });
-//         //        }
-//         //
-//         //        _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
-//         //                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-//         //                .dstSet = _descriptorSetsForTextureAndSampler,
-//         //                .dstBinding = 1,
-//         //                .dstArrayElement = 0,
-//         //                .descriptorCount = static_cast<uint32_t>(imageInfos.size()),
-//         //                .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-//         //                .pImageInfo = imageInfos.data(),
-//         //                .pBufferInfo = nullptr,
-//         //        });
-//     }
+    {
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = _compositeMatB;
+        bufferInfo.offset = 0;
+        bufferInfo.range = _compositeMatBSizeInByte;
 
-//     // for glb samplers
-//     {
-//         VkDescriptorImageInfo samplerInfo;
-//         samplerInfo.sampler = _glbSamplers[0];
-//         samplerInfo.imageView = VK_NULL_HANDLE;
-//         samplerInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-//         //
-//         //        const auto samplersCt = _glbSamplers.size();
-//         //        std::vector<VkDescriptorImageInfo> samplerInfos;
-//         //        samplerInfos.reserve(samplersCt);
-//         //        for (const auto &sampler: _glbSamplers) {
-//         //            samplerInfos.emplace_back(VkDescriptorImageInfo{
-//         //                    .sampler = sampler,
-//         //                    .imageView = VK_NULL_HANDLE,
-//         //                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-//         //            });
-//         //        }
-//         _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
-//             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-//             .dstSet = _descriptorSetsForTextureAndSampler,
-//             .dstBinding = 2,
-//             .dstArrayElement = 0,
-//             .descriptorCount = 1,
-//             .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
-//             .pImageInfo = &samplerInfo,
-//             .pBufferInfo = nullptr,
-//         });
-//     }
+        _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = _descriptorSetsForMaterialBuffer,
+            .dstBinding = 0,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .pImageInfo = nullptr,
+            .pBufferInfo = &bufferInfo,
+        });
+    }
 
-//     {
-//         VkDescriptorBufferInfo bufferInfo{};
-//         bufferInfo.buffer = _compositeMatB;
-//         bufferInfo.offset = 0;
-//         bufferInfo.range = _compositeMatBSizeInByte;
-
-//         _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
-//             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-//             .dstSet = _descriptorSetsForMaterialBuffer,
-//             .dstBinding = 0,
-//             .dstArrayElement = 0,
-//             .descriptorCount = 1,
-//             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-//             .pImageInfo = nullptr,
-//             .pBufferInfo = &bufferInfo,
-//         });
-//     }
-
-//     // Validation Error: [ VUID-VkWriteDescriptorSet-descriptorType-00325 ] Object 0: handle = 0xd10d270000000018, type = VK_OBJECT_TYPE_DESCRIPTOR_SET; Object 1: handle = 0x7fc177270ab3, type = VK_OBJECT_TYPE_SAMPLER; | MessageID = 0xce76343a | vkUpdateDescriptorSets(): pDescriptorWrites[7] Attempted write update to sampler descriptor with invalid sample (VkSampler 0x7fc177270ab3[]).
-//     //  The Vulkan spec states: If descriptorType is VK_DESCRIPTOR_TYPE_SAMPLER or VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-//     //  and dstSet was not allocated with a layout that included immutable samplers for dstBinding with descriptorType, the sampler member of each element of pImageInfo must be a valid VkSampler object (https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-VkWriteDescriptorSet-descriptorType-00325)
-//     LOGI("_writeDescriptorSetBundle: %d", _writeDescriptorSetBundle.size());
-//     vkUpdateDescriptorSets(_logicalDevice, _writeDescriptorSetBundle.size(),
-//                            _writeDescriptorSetBundle.data(), 0,
-//                            nullptr);
-// }
+    // Validation Error: [ VUID-VkWriteDescriptorSet-descriptorType-00325 ] Object 0: handle = 0xd10d270000000018, type = VK_OBJECT_TYPE_DESCRIPTOR_SET; Object 1: handle = 0x7fc177270ab3, type = VK_OBJECT_TYPE_SAMPLER; | MessageID = 0xce76343a | vkUpdateDescriptorSets(): pDescriptorWrites[7] Attempted write update to sampler descriptor with invalid sample (VkSampler 0x7fc177270ab3[]).
+    //  The Vulkan spec states: If descriptorType is VK_DESCRIPTOR_TYPE_SAMPLER or VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+    //  and dstSet was not allocated with a layout that included immutable samplers for dstBinding with descriptorType, the sampler member of each element of pImageInfo must be a valid VkSampler object (https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-VkWriteDescriptorSet-descriptorType-00325)
+    vkUpdateDescriptorSets(_logicalDevice, _writeDescriptorSetBundle.size(),
+                           _writeDescriptorSetBundle.data(), 0,
+                           nullptr);
+}
 
 // // load shader spirv
 // std::vector<uint8_t> LoadBinaryFile(const char *file_path,
@@ -2025,7 +2002,7 @@ void VkApplication::createCommandBuffer()
 //                             _pipelineLayout, 1, 1, &_descriptorSetsForTextureSampler,
 //                             0, nullptr);
 //     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-//                             _pipelineLayout, 3, 1, &_descriptorSetsForGlbSSBO,
+//                             _pipelineLayout, 3, 1, &_descriptorSetsForVerticesBuffer,
 //                             0, nullptr);
 //     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 //                             _pipelineLayout, 2, 1, &_descriptorSetsForIndirectDrawBuffer,
@@ -2154,50 +2131,57 @@ void VkApplication::preHostDeviceIO()
     VK_CHECK(vkCreateFence(_logicalDevice, &fenceInfo, nullptr, &_ioFence));
 }
 
-// // end recording of buffer.
-// // wait for completion using fence
-// void VkApplication::postHostDeviceIO()
-// {
-//     VK_CHECK(vkEndCommandBuffer(_uploadCmd));
+// end recording of buffer.
+// wait for completion using fence
+void VkApplication::postHostDeviceIO()
+{
+    VK_CHECK(vkEndCommandBuffer(_uploadCmd));
 
-//     const VkPipelineStageFlags flags = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    const VkPipelineStageFlags flags = VK_PIPELINE_STAGE_TRANSFER_BIT;
 
-//     VkSubmitInfo submitInfo{};
-//     submitInfo.waitSemaphoreCount = 0;
-//     submitInfo.pWaitSemaphores = VK_NULL_HANDLE;
-//     // only useful when having waitsemaphore
-//     submitInfo.pWaitDstStageMask = &flags;
-//     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-//     submitInfo.commandBufferCount = 1;
-//     submitInfo.pCommandBuffers = &_uploadCmd;
-//     submitInfo.signalSemaphoreCount = 0;
-//     submitInfo.pSignalSemaphores = VK_NULL_HANDLE;
-//     VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submitInfo, _ioFence));
+    VkSubmitInfo submitInfo{};
+    submitInfo.waitSemaphoreCount = 0;
+    submitInfo.pWaitSemaphores = VK_NULL_HANDLE;
+    // only useful when having waitsemaphore
+    submitInfo.pWaitDstStageMask = &flags;
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &_uploadCmd;
+    submitInfo.signalSemaphoreCount = 0;
+    submitInfo.pSignalSemaphores = VK_NULL_HANDLE;
+    VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submitInfo, _ioFence));
 
-//     const auto result = vkWaitForFences(_logicalDevice, 1, &_ioFence, VK_TRUE,
-//                                         DEFAULT_FENCE_TIMEOUT);
-//     if (result == VK_TIMEOUT)
-//     {
-//         vkDeviceWaitIdle(_logicalDevice);
-//     }
-//     // clean all the staging resources
-//     vkDestroyBuffer(_logicalDevice, _stagingVb, nullptr);
-//     vkDestroyBuffer(_logicalDevice, _stagingIb, nullptr);
-//     // for texture
-//     vkDestroyBuffer(_logicalDevice, _stagingImageBuffer, nullptr);
-//     // for glb Scene
-//     for (size_t i = 0; i < _stagingVbForMesh.size(); ++i)
-//     {
-//         vkDestroyBuffer(_logicalDevice, _stagingVbForMesh[i], nullptr);
-//     }
-//     for (size_t i = 0; i < _stagingIbForMesh.size(); ++i)
-//     {
-//         vkDestroyBuffer(_logicalDevice, _stagingIbForMesh[i], nullptr);
-//     }
-//     // for material buffer
-//     vkDestroyBuffer(_logicalDevice, _stagingMatBuffer, nullptr);
-//     vkDestroyBuffer(_logicalDevice, _stagingIndirectDrawBuffer, nullptr);
-// }
+    const auto result = vkWaitForFences(_logicalDevice, 1, &_ioFence, VK_TRUE,
+                                        DEFAULT_FENCE_TIMEOUT);
+    if (result == VK_TIMEOUT)
+    {
+        vkDeviceWaitIdle(_logicalDevice);
+    }
+    // clean all the staging resources
+    if (_stagingVb != VK_NULL_HANDLE)
+        vkDestroyBuffer(_logicalDevice, _stagingVb, nullptr);
+    if (_stagingIb != VK_NULL_HANDLE)
+        vkDestroyBuffer(_logicalDevice, _stagingIb, nullptr);
+
+    // for texture
+    if (_stagingImageBuffer != VK_NULL_HANDLE)
+        vkDestroyBuffer(_logicalDevice, _stagingImageBuffer, nullptr);
+
+    // for glb Scene
+    for (size_t i = 0; i < _stagingVbForMesh.size(); ++i)
+    {
+        vkDestroyBuffer(_logicalDevice, _stagingVbForMesh[i], nullptr);
+    }
+    for (size_t i = 0; i < _stagingIbForMesh.size(); ++i)
+    {
+        vkDestroyBuffer(_logicalDevice, _stagingIbForMesh[i], nullptr);
+    }
+    // for material buffer
+    if (_stagingIndirectDrawBuffer != VK_NULL_HANDLE)
+        vkDestroyBuffer(_logicalDevice, _stagingIndirectDrawBuffer, nullptr);
+    if (_stagingMatBuffer != VK_NULL_HANDLE)
+        vkDestroyBuffer(_logicalDevice, _stagingMatBuffer, nullptr);
+}
 
 // // cull face be careful
 // // Interleaved vertex attributes

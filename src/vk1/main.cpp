@@ -942,10 +942,12 @@ int main(int argc, char **argv)
 
     while (gRunning)
     {
+        vkApp.renderPerFrame();
         gWindow.pollEvents();
     }
 
-    // gWindow.shutdown();
+    vkApp.teardown();
+    gWindow.shutdown();
     // glslang_finalize_process();
     glslang::FinalizeProcess();
     return 0;

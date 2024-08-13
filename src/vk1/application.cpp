@@ -62,130 +62,134 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityF
     return VK_FALSE;
 }
 
-// void VkApplication::teardown()
-// {
-//     vkDeviceWaitIdle(_logicalDevice);
-//     deleteSwapChain();
+void VkApplication::teardown()
+{
+    vkDeviceWaitIdle(_logicalDevice);
+    deleteSwapChain();
 
-//     // delete io fence
-//     vkDestroyFence(_logicalDevice, _ioFence, nullptr);
-//     // free cmdBuffer for io purpose
-//     vkFreeCommandBuffers(_logicalDevice, _commandPool, 1, &_uploadCmd);
+    // delete io fence
+    vkDestroyFence(_logicalDevice, _ioFence, nullptr);
+    // free cmdBuffer for io purpose
+    vkFreeCommandBuffers(_logicalDevice, _commandPool, 1, &_uploadCmd);
 
-//     // texture
-//     vkDestroyImageView(_logicalDevice, _imageView, nullptr);
-//     vkDestroyImage(_logicalDevice, _image, nullptr);
-//     vkDestroySampler(_logicalDevice, _sampler, nullptr);
-//     vmaFreeMemory(_vmaAllocator, _vmaImageAllocation);
+    // shader module
+    vkDestroyShaderModule(_logicalDevice, _vsShaderModule, nullptr);
+    vkDestroyShaderModule(_logicalDevice, _fsShaderModule, nullptr);
 
-//     // glb
-//     for (const auto &imageView : _glbImageViews)
-//     {
-//         vkDestroyImageView(_logicalDevice, imageView, nullptr);
-//     }
-//     ASSERT(_glbImages.size() == _glbImageAllocation.size(),
-//            "_glbImages'size should == _glbImageAllocation's size");
-//     for (int i = 0; i < _glbImages.size(); ++i)
-//     {
-//         vkDestroyImage(_logicalDevice, _glbImages[i], nullptr);
-//         vmaDestroyImage(_vmaAllocator, _glbImages[i], _glbImageAllocation[i]);
-//     }
+    // texture
+    // vkDestroyImageView(_logicalDevice, _imageView, nullptr);
+    // vkDestroyImage(_logicalDevice, _image, nullptr);
+    // vkDestroySampler(_logicalDevice, _sampler, nullptr);
+    // vmaFreeMemory(_vmaAllocator, _vmaImageAllocation);
 
-//     // shader data
-//     vkDestroyDescriptorPool(_logicalDevice, _descriptorSetPool, nullptr);
-//     for (const auto &descriptorSetLayout : _descriptorSetLayouts)
-//     {
-//         vkDestroyDescriptorSetLayout(_logicalDevice, descriptorSetLayout, nullptr);
-//     }
+    // glb
+    for (const auto &imageView : _glbImageViews)
+    {
+        vkDestroyImageView(_logicalDevice, imageView, nullptr);
+    }
+    ASSERT(_glbImages.size() == _glbImageAllocation.size(),
+           "_glbImages'size should == _glbImageAllocation's size");
+    for (int i = 0; i < _glbImages.size(); ++i)
+    {
+        vkDestroyImage(_logicalDevice, _glbImages[i], nullptr);
+        vmaDestroyImage(_vmaAllocator, _glbImages[i], _glbImageAllocation[i]);
+    }
 
-//     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-//     {
-//         // vma buffer
-//         // unmap a buffer not mapped will crash
-//         // vmaUnmapMemory(_vmaAllocator, _vmaAllocations[i]);
-//         vmaDestroyBuffer(_vmaAllocator, _uniformBuffers[i], _vmaAllocations[i]);
-//         // sync
-//         vkDestroySemaphore(_logicalDevice, _imageCanAcquireSemaphores[i], nullptr);
-//         vkDestroySemaphore(_logicalDevice, _imageRendereredSemaphores[i], nullptr);
-//         vkDestroyFence(_logicalDevice, _inFlightFences[i], nullptr);
-//     }
+    // shader data
+    vkDestroyDescriptorPool(_logicalDevice, _descriptorSetPool, nullptr);
+    for (const auto &descriptorSetLayout : _descriptorSetLayouts)
+    {
+        vkDestroyDescriptorSetLayout(_logicalDevice, descriptorSetLayout, nullptr);
+    }
 
-//     vkDestroyCommandPool(_logicalDevice, _commandPool, nullptr);
-//     vkDestroyPipeline(_logicalDevice, _graphicsPipeline, nullptr);
-//     vkDestroyPipelineLayout(_logicalDevice, _pipelineLayout, nullptr);
-//     vkDestroyRenderPass(_logicalDevice, _swapChainRenderPass, nullptr);
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        // vma buffer
+        // unmap a buffer not mapped will crash
+        // vmaUnmapMemory(_vmaAllocator, _vmaAllocations[i]);
+        vmaDestroyBuffer(_vmaAllocator, _uniformBuffers[i], _vmaAllocations[i]);
+        // sync
+        vkDestroySemaphore(_logicalDevice, _imageCanAcquireSemaphores[i], nullptr);
+        vkDestroySemaphore(_logicalDevice, _imageRendereredSemaphores[i], nullptr);
+        vkDestroyFence(_logicalDevice, _inFlightFences[i], nullptr);
+    }
 
-//     vmaDestroyAllocator(_vmaAllocator);
+    vkDestroyCommandPool(_logicalDevice, _commandPool, nullptr);
+    vkDestroyPipeline(_logicalDevice, _graphicsPipeline, nullptr);
+    vkDestroyPipelineLayout(_logicalDevice, _pipelineLayout, nullptr);
+    vkDestroyRenderPass(_logicalDevice, _swapChainRenderPass, nullptr);
 
-//     vkDestroyDevice(_logicalDevice, nullptr);
-//     vkDestroyDebugUtilsMessengerEXT(_instance, _debugMessenger, nullptr);
-//     vkDestroySurfaceKHR(_instance, _surface, nullptr);
-//     vkDestroyInstance(_instance, nullptr);
-//     _initialized = false;
-// }
+    vmaDestroyAllocator(_vmaAllocator);
 
-// void VkApplication::renderPerFrame()
-// {
-//     // no timeout set
-//     VK_CHECK(vkWaitForFences(_logicalDevice, 1, &_inFlightFences[_currentFrameId], VK_TRUE,
-//                              UINT64_MAX));
-//     // VK_CHECK(vkResetFences(device_, 1, &acquireFence_));
-//     uint32_t swapChainImageIndex;
-//     VkResult result = vkAcquireNextImageKHR(
-//         _logicalDevice, _swapChain, UINT64_MAX, _imageCanAcquireSemaphores[_currentFrameId],
-//         VK_NULL_HANDLE, &swapChainImageIndex);
-//     if (result == VK_ERROR_OUT_OF_DATE_KHR)
-//     {
-//         recreateSwapChain();
-//         return;
-//     }
-//     assert(result == VK_SUCCESS ||
-//            result == VK_SUBOPTIMAL_KHR); // failed to acquire swap chain image
-//     updateUniformBuffer(_currentFrameId);
+    vkDestroyDevice(_logicalDevice, nullptr);
+    vkDestroyDebugUtilsMessengerEXT(_instance, _debugMessenger, nullptr);
+    vkDestroySurfaceKHR(_instance, _surface, nullptr);
+    vkDestroyInstance(_instance, nullptr);
+    _initialized = false;
+}
 
-//     // vkWaitForFences and reset pattern
-//     VK_CHECK(vkResetFences(_logicalDevice, 1, &_inFlightFences[_currentFrameId]));
-//     // vkWaitForFences ensure the previous command is submitted from the host, now it can be modified.
-//     VK_CHECK(vkResetCommandBuffer(_commandBuffers[_currentFrameId], 0));
+void VkApplication::renderPerFrame()
+{
+    // no timeout set
+    VK_CHECK(vkWaitForFences(_logicalDevice, 1, &_inFlightFences[_currentFrameId], VK_TRUE,
+                             UINT64_MAX));
+    // VK_CHECK(vkResetFences(device_, 1, &acquireFence_));
+    uint32_t swapChainImageIndex;
+    VkResult result = vkAcquireNextImageKHR(
+        _logicalDevice, _swapChain, UINT64_MAX, _imageCanAcquireSemaphores[_currentFrameId],
+        VK_NULL_HANDLE, &swapChainImageIndex);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        recreateSwapChain();
+        return;
+    }
+    assert(result == VK_SUCCESS ||
+           result == VK_SUBOPTIMAL_KHR); // failed to acquire swap chain image
+    updateUniformBuffer(_currentFrameId);
 
-//     recordCommandBuffer(_commandBuffers[_currentFrameId], swapChainImageIndex);
-//     // submit command
-//     VkSubmitInfo submitInfo{};
-//     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    // vkWaitForFences and reset pattern
+    VK_CHECK(vkResetFences(_logicalDevice, 1, &_inFlightFences[_currentFrameId]));
+    // vkWaitForFences ensure the previous command is submitted from the host, now it can be modified.
+    VK_CHECK(vkResetCommandBuffer(_commandBuffers[_currentFrameId], 0));
 
-//     VkSemaphore waitSemaphores[] = {_imageCanAcquireSemaphores[_currentFrameId]};
-//     // pipeline stages
-//     // specifies the stage of the pipeline after blending where the final color values are output from the pipeline
-//     // basically wait for the previous rendering finished
-//     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    recordCommandBuffer(_commandBuffers[_currentFrameId], swapChainImageIndex);
+    // submit command
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-//     submitInfo.waitSemaphoreCount = 1;
-//     submitInfo.pWaitSemaphores = waitSemaphores;
-//     submitInfo.pWaitDstStageMask = waitStages;
-//     submitInfo.commandBufferCount = 1;
-//     submitInfo.pCommandBuffers = &_commandBuffers[_currentFrameId];
-//     // signal semaphore
-//     VkSemaphore signalRenderedSemaphores[] = {_imageRendereredSemaphores[_currentFrameId]};
-//     submitInfo.signalSemaphoreCount = 1;
-//     submitInfo.pSignalSemaphores = signalRenderedSemaphores;
-//     // signal fence
-//     VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submitInfo, _inFlightFences[_currentFrameId]));
+    VkSemaphore waitSemaphores[] = {_imageCanAcquireSemaphores[_currentFrameId]};
+    // pipeline stages
+    // specifies the stage of the pipeline after blending where the final color values are output from the pipeline
+    // basically wait for the previous rendering finished
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 
-//     // present after rendering is done
-//     VkPresentInfoKHR presentInfo{};
-//     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-//     presentInfo.waitSemaphoreCount = 1;
-//     presentInfo.pWaitSemaphores = signalRenderedSemaphores;
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = waitSemaphores;
+    submitInfo.pWaitDstStageMask = waitStages;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &_commandBuffers[_currentFrameId];
+    // signal semaphore
+    VkSemaphore signalRenderedSemaphores[] = {_imageRendereredSemaphores[_currentFrameId]};
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = signalRenderedSemaphores;
+    // signal fence
+    VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submitInfo, _inFlightFences[_currentFrameId]));
 
-//     VkSwapchainKHR swapChains[] = {_swapChain};
-//     presentInfo.swapchainCount = 1;
-//     presentInfo.pSwapchains = swapChains;
-//     presentInfo.pImageIndices = &swapChainImageIndex;
-//     presentInfo.pResults = nullptr;
-//     VK_CHECK(vkQueuePresentKHR(_presentationQueue, &presentInfo));
+    // present after rendering is done
+    VkPresentInfoKHR presentInfo{};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = signalRenderedSemaphores;
 
-//     _currentFrameId = (_currentFrameId + 1) % MAX_FRAMES_IN_FLIGHT;
-// }
+    VkSwapchainKHR swapChains[] = {_swapChain};
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = swapChains;
+    presentInfo.pImageIndices = &swapChainImageIndex;
+    presentInfo.pResults = nullptr;
+    VK_CHECK(vkQueuePresentKHR(_presentationQueue, &presentInfo));
+
+    _currentFrameId = (_currentFrameId + 1) % MAX_FRAMES_IN_FLIGHT;
+}
 
 void VkApplication::createInstance()
 {
@@ -1109,30 +1113,30 @@ void VkApplication::createSwapChainRenderPass()
     setCorrlationId(_swapChainRenderPass, _logicalDevice, VK_OBJECT_TYPE_RENDER_PASS, "Render pass: SwapChain");
 }
 
-// void VkApplication::recreateSwapChain()
-// {
-//     // wait on the host for the completion of outstanding queue operations for all queues
-//     vkDeviceWaitIdle(_logicalDevice);
-//     deleteSwapChain();
-//     createSwapChain();
-//     createSwapChainImageViews();
-//     createSwapChainFramebuffers();
-// }
+void VkApplication::recreateSwapChain()
+{
+    // wait on the host for the completion of outstanding queue operations for all queues
+    vkDeviceWaitIdle(_logicalDevice);
+    deleteSwapChain();
+    createSwapChain();
+    createSwapChainImageViews();
+    createSwapChainFramebuffers();
+}
 
-// void VkApplication::deleteSwapChain()
-// {
-//     for (size_t i = 0; i < _swapChainFramebuffers.size(); ++i)
-//     {
-//         vkDestroyFramebuffer(_logicalDevice, _swapChainFramebuffers[i], nullptr);
-//     }
+void VkApplication::deleteSwapChain()
+{
+    for (size_t i = 0; i < _swapChainFramebuffers.size(); ++i)
+    {
+        vkDestroyFramebuffer(_logicalDevice, _swapChainFramebuffers[i], nullptr);
+    }
 
-//     for (size_t i = 0; i < _swapChainImageViews.size(); i++)
-//     {
-//         vkDestroyImageView(_logicalDevice, _swapChainImageViews[i], nullptr);
-//     }
-//     // image is owned by swap chain
-//     vkDestroySwapchainKHR(_logicalDevice, _swapChain, nullptr);
-// }
+    for (size_t i = 0; i < _swapChainImageViews.size(); i++)
+    {
+        vkDestroyImageView(_logicalDevice, _swapChainImageViews[i], nullptr);
+    }
+    // image is owned by swap chain
+    vkDestroySwapchainKHR(_logicalDevice, _swapChain, nullptr);
+}
 
 // depends on shader, and used by graphicsPipelineDesc
 // each set have one instance of layout
@@ -1503,33 +1507,33 @@ void VkApplication::createUniformBuffers()
 //     }
 // }
 
-// void VkApplication::updateUniformBuffer(int currentFrameId)
-// {
-//     //    UniformDataDef0 ubo{};
-//     //    getPrerotationMatrix(_pretransformFlag, ubo.mvp);
+void VkApplication::updateUniformBuffer(int currentFrameId)
+{
+    //    UniformDataDef0 ubo{};
+    //    getPrerotationMatrix(_pretransformFlag, ubo.mvp);
 
-//     auto view = _camera.viewTransformLH();
-//     auto persPrj = PerspectiveProjectionTransformLH(0.0001f, 200.0f, 0.3f,
-//                                                     (float)_swapChainExtent.width /
-//                                                         (float)_swapChainExtent.height);
+    auto view = _camera.viewTransformLH();
+    auto persPrj = PerspectiveProjectionTransformLH(0.0001f, 200.0f, 0.3f,
+                                                    (float)_swapChainExtent.width /
+                                                        (float)_swapChainExtent.height);
 
-//     mat4x4f identity(1.0f);
-//     auto mv = MatrixMultiply4x4(identity, view);
-//     auto vp = MatrixMultiply4x4(view, persPrj);
-//     auto mvp = MatrixMultiply4x4(identity, vp);
+    mat4x4f identity(1.0f);
+    auto mv = MatrixMultiply4x4(identity, view);
+    auto vp = MatrixMultiply4x4(view, persPrj);
+    auto mvp = MatrixMultiply4x4(identity, vp);
 
-//     UniformDataDef1 ubo;
-//     ubo.viewPos = _camera.viewPos();
-//     ubo.modelView = mv;
-//     ubo.projection = persPrj;
-//     ubo.mvp = mvp;
+    UniformDataDef1 ubo;
+    ubo.viewPos = _camera.viewPos();
+    ubo.modelView = mv;
+    ubo.projection = persPrj;
+    ubo.mvp = mvp;
 
-//     void *mappedMemory{nullptr};
-//     VK_CHECK(vmaMapMemory(_vmaAllocator, _vmaAllocations[currentFrameId], &mappedMemory));
-//     memcpy(mappedMemory, &ubo, sizeof(UniformDataDef1));
-//     // memcpy(mappedMemory, &ubo, sizeof(ubo));
-//     vmaUnmapMemory(_vmaAllocator, _vmaAllocations[currentFrameId]);
-// }
+    void *mappedMemory{nullptr};
+    VK_CHECK(vmaMapMemory(_vmaAllocator, _vmaAllocations[currentFrameId], &mappedMemory));
+    memcpy(mappedMemory, &ubo, sizeof(UniformDataDef1));
+    // memcpy(mappedMemory, &ubo, sizeof(ubo));
+    vmaUnmapMemory(_vmaAllocator, _vmaAllocations[currentFrameId]);
+}
 
 void VkApplication::bindResourceToDescriptorSets()
 {
@@ -1956,92 +1960,67 @@ void VkApplication::createCommandBuffer()
     VK_CHECK(vkAllocateCommandBuffers(_logicalDevice, &allocInfo, _commandBuffers.data()));
 }
 
-// void VkApplication::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapChainImageIndex)
-// {
-//     VkCommandBufferBeginInfo beginInfo{};
-//     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-//     //  command buffer will be reset and recorded again between each submissio
-//     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-//     beginInfo.pInheritanceInfo = nullptr;
+void VkApplication::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapChainImageIndex)
+{
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    //  command buffer will be reset and recorded again between each submissio
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    beginInfo.pInheritanceInfo = nullptr;
 
-//     VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
+    VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
 
-//     // Begin Render Pass, only 1 render pass
-//     constexpr VkClearValue clearColor{0.0f, 0.0f, 0.0f, 0.0f};
-//     VkRenderPassBeginInfo renderPassInfo{};
-//     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-//     renderPassInfo.renderPass = _swapChainRenderPass;
-//     // fbo corresponding to the swapchain image index
-//     renderPassInfo.framebuffer = _swapChainFramebuffers[swapChainImageIndex];
-//     renderPassInfo.renderArea.offset = {0, 0};
-//     renderPassInfo.renderArea.extent = _swapChainExtent;
-//     renderPassInfo.clearValueCount = 1;
-//     renderPassInfo.pClearValues = &clearColor;
-//     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    // Begin Render Pass, only 1 render pass
+    constexpr VkClearValue clearColor{0.0f, 0.0f, 0.0f, 0.0f};
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = _swapChainRenderPass;
+    // fbo corresponding to the swapchain image index
+    renderPassInfo.framebuffer = _swapChainFramebuffers[swapChainImageIndex];
+    renderPassInfo.renderArea.offset = {0, 0};
+    renderPassInfo.renderArea.extent = _swapChainExtent;
+    renderPassInfo.clearValueCount = 1;
+    renderPassInfo.pClearValues = &clearColor;
+    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-//     // Dynamic States (when create the graphics pipeline, they are not specified)
-//     VkViewport viewport{};
-//     viewport.width = (float)_swapChainExtent.width;
-//     viewport.height = (float)_swapChainExtent.height;
-//     viewport.minDepth = 0.0f;
-//     viewport.maxDepth = 1.0f;
-//     vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+    // Dynamic States (when create the graphics pipeline, they are not specified)
+    VkViewport viewport{};
+    viewport.width = (float)_swapChainExtent.width;
+    viewport.height = (float)_swapChainExtent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
-//     VkRect2D scissor{};
-//     scissor.extent = _swapChainExtent;
-//     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-//     vkCmdSetDepthTestEnable(commandBuffer, VK_TRUE);
+    VkRect2D scissor{};
+    scissor.extent = _swapChainExtent;
+    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+    vkCmdSetDepthTestEnable(commandBuffer, VK_TRUE);
 
-//     // apply graphics pipeline to the cmd
-//     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _graphicsPipeline);
-//     // resource and ds to the shaders of this pipeline
-//     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-//                             _pipelineLayout, 0, 1, &_descriptorSetsForUbo[_currentFrameId],
-//                             0, nullptr);
-//     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-//                             _pipelineLayout, 1, 1, &_descriptorSetsForTextureSampler,
-//                             0, nullptr);
-//     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-//                             _pipelineLayout, 3, 1, &_descriptorSetsForVerticesBuffer,
-//                             0, nullptr);
-//     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-//                             _pipelineLayout, 2, 1, &_descriptorSetsForIndirectDrawBuffer,
-//                             0, nullptr);
-//     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-//                             _pipelineLayout, 4, 1, &_descriptorSetsForTextureAndSampler,
-//                             0, nullptr);
-//     //    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-//     //                            _pipelineLayout, 5, 1, &_descriptorSetsForSampler,
-//     //                            0, nullptr);
-//     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-//                             _pipelineLayout, 5, 1, &_descriptorSetsForMaterialBuffer,
-//                             0, nullptr);
-//     //    // submit draw call, data is generated in the vs
-//     //    // for ssbo + vs, gpu-driven rendering
-//     //    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
-
-//     vkCmdBindIndexBuffer(commandBuffer, _compositeIB, 0, VK_INDEX_TYPE_UINT32);
-//     // how many draws are dependent on how many meshes in the scene.
-//     vkCmdDrawIndexedIndirect(commandBuffer, _indirectDrawB, 0, _numMeshes,
-//                              sizeof(IndirectDrawForVulkan));
-
-//     //    // draw for textured quad
-//     //    // for vao driven draw
-//     //    VkDeviceSize offsets[1] = {0};
-//     //    // it could bind multiple VBs, here only need 1.
-//     //    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &_deviceVb, offsets);
-//     //    // no offset, start from zero
-//     //    vkCmdBindIndexBuffer(commandBuffer, _deviceIb, 0, VK_INDEX_TYPE_UINT32);
-//     //
-//     //    const uint32_t instanceCt = 1;
-//     //    const uint32_t firstIndex = 0;
-//     //    const uint32_t vertexOffset = 0;
-//     //    const uint32_t firstInstance = 0;
-//     //    vkCmdDrawIndexed(commandBuffer, _indexCount, instanceCt, firstIndex, vertexOffset,
-//     //                     firstInstance);
-//     vkCmdEndRenderPass(commandBuffer);
-//     VK_CHECK(vkEndCommandBuffer(commandBuffer));
-// }
+    // apply graphics pipeline to the cmd
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _graphicsPipeline);
+    // resource and ds to the shaders of this pipeline
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            _pipelineLayout, 0, 1, &_descriptorSetsForUbo[_currentFrameId],
+                            0, nullptr);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            _pipelineLayout, 1, 1, &_descriptorSetsForVerticesBuffer,
+                            0, nullptr);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            _pipelineLayout, 2, 1, &_descriptorSetsForIndirectDrawBuffer,
+                            0, nullptr);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            _pipelineLayout, 3, 1, &_descriptorSetsForTextureAndSampler,
+                            0, nullptr);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            _pipelineLayout, 4, 1, &_descriptorSetsForMaterialBuffer,
+                            0, nullptr);
+    vkCmdBindIndexBuffer(commandBuffer, _compositeIB, 0, VK_INDEX_TYPE_UINT32);
+    // how many draws are dependent on how many meshes in the scene.
+    vkCmdDrawIndexedIndirect(commandBuffer, _indirectDrawB, 0, _numMeshes,
+                             sizeof(IndirectDrawForVulkan));
+    vkCmdEndRenderPass(commandBuffer);
+    VK_CHECK(vkEndCommandBuffer(commandBuffer));
+}
 
 void VkApplication::createPerFrameSyncObjects()
 {

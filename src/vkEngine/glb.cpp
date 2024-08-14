@@ -282,8 +282,8 @@ void readMeshes(const Microsoft::glTF::Document &document,
                             vertex.vy = positionBuffer[vec3Offset[1]];
                             vertex.vz = positionBuffer[vec3Offset[2]];
 
-                            vertex.ux = positionBuffer[vec2Offset[0]];
-                            vertex.uy = positionBuffer[vec2Offset[1]];
+                            vertex.ux = uvBuffer[vec2Offset[0]];
+                            vertex.uy = uvBuffer[vec2Offset[1]];
                             vertex.material = uint32_t(currMesh.materialIdx);
 
                             // apply local transform for all the positions and normals (if exists)
@@ -292,7 +292,7 @@ void readMeshes(const Microsoft::glTF::Document &document,
 //                                 vertex.vx,
 //                                 vertex.vy,
 //                                 vertex.vz);
-                            //vertex.transform(m);
+                            vertex.transform(m);
                             // LOGI("After Transform: [%f %f %f]",
                             //      vertex.vx,
                             //      vertex.vy,

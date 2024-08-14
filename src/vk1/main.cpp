@@ -35,14 +35,14 @@ uint64_t gLastFrame{0};
 
 int main(int argc, char **argv)
 {
-    // // BoxTextured.glb
-    // Camera _camera{
-    //     vec3f(std::array{0.f, 0.f, 6.f}),    // pos
-    //     vec3f(std::array{0.f, 0.f, 0.f}),    // target -z
-    //     vec3f(std::array{0.0f, 1.0f, 1.0f}), // initial world up
-    //     0.0f,                                // initial pitch
-    //     -97.f                                // initial yaw
-    // };
+    // BoxTextured.glb
+    Camera _camera{
+        vec3f(std::array{0.f, 0.f, 6.f}),    // pos
+        vec3f(std::array{0.f, 0.f, 0.f}),    // target -z
+        vec3f(std::array{0.0f, 1.0f, 1.0f}), // initial world up
+        0.0f,                                // initial pitch
+        -97.f                                // initial yaw
+    };
 
     // // Avocado.glb
     // Camera _camera{
@@ -61,14 +61,15 @@ int main(int argc, char **argv)
     //     0.0f,                                                  // initial pitch
     //     -97.f                                                  // initial yaw
     // };
-    // AnisotropyBarnLamp
-    Camera _camera{
-        vec3f(std::array{-0.009215f, -0.057677f, 1.f}),       // pos
-        vec3f(std::array{-0.009215f, -0.057677f, 0.113268f}), // target -z
-        vec3f(std::array{0.0f, 1.0f, 0.0f}),                  // initial world up
-        0.0f,                                                 // initial pitch
-        -90.f                                                 // initial yaw
-    };
+
+    // // AnisotropyBarnLamp
+    // Camera _camera{
+    //     vec3f(std::array{-0.009215f, -0.057677f, 1.f}),       // pos
+    //     vec3f(std::array{-0.009215f, -0.057677f, 0.113268f}), // target -z
+    //     vec3f(std::array{0.0f, 1.0f, 0.0f}),                  // initial world up
+    //     0.0f,                                                 // initial pitch
+    //     -90.f                                                 // initial yaw
+    // };
 
     WindowConfig cfg{
         1920,
@@ -82,7 +83,7 @@ int main(int argc, char **argv)
     // glslang_initialize_process();
     glslang::InitializeProcess();
 
-    VkApplication vkApp(window, _camera, "AnisotropyBarnLamp.glb"s);
+    VkApplication vkApp(window, _camera, "BoxTextured.glb"s);
     vkApp.init();
 
     // init();

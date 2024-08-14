@@ -64,8 +64,8 @@ struct Vertex {
         }));
 
         vx = newp[COMPONENT::X];
-        vy = newp[COMPONENT::X];
-        vz = newp[COMPONENT::X];
+        vy = newp[COMPONENT::Y];
+        vz = newp[COMPONENT::Z];
     }
 };
 

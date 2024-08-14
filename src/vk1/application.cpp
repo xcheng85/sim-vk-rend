@@ -28,17 +28,12 @@ void VkApplication::init()
     createSwapChainImageViews();
     createSwapChainRenderPass();
     createShaderModules();
-    createDescriptorSetLayout();
-    createDescriptorPool();
-    allocateDescriptorSets();
     createUniformBuffers();
 
     // // application logic
-    createGraphicsPipeline();
-    createSwapChainFramebuffers();
     createCommandPool();
     createCommandBuffer();
-    createPerFrameSyncObjects();
+
     // vao, textures and glb all depends on host-device io
     // one-time commandBuffer _uploadCmd
     preHostDeviceIO();
@@ -46,6 +41,12 @@ void VkApplication::init()
     //  must prior to bindResourceToDescriptorSets due to imageView
     // loadTextures();
     loadGLB();
+    createDescriptorSetLayout();
+    createDescriptorPool();
+    allocateDescriptorSets();
+    createGraphicsPipeline();
+    createSwapChainFramebuffers();
+    createPerFrameSyncObjects();
     postHostDeviceIO();
     bindResourceToDescriptorSets();
 
@@ -119,8 +120,8 @@ void VkApplication::teardown()
     vkDestroyPipelineLayout(_logicalDevice, _pipelineLayout, nullptr);
     vkDestroyRenderPass(_logicalDevice, _swapChainRenderPass, nullptr);
 
-   // CRASH
-   // //vmaDestroyAllocator(_vmaAllocator);
+    // CRASH
+    // //vmaDestroyAllocator(_vmaAllocator);
 
     vkDestroyDevice(_logicalDevice, nullptr);
     vkDestroyDebugUtilsMessengerEXT(_instance, _debugMessenger, nullptr);
@@ -1260,7 +1261,7 @@ void VkApplication::createDescriptorSetLayout()
             dsLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
             dsLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
             dsLayoutBinding.binding = 0;
-            dsLayoutBinding.descriptorCount = 1; // _glbImageViews.size();
+            dsLayoutBinding.descriptorCount = _glbImageViews.size();
             setLayoutBindings.emplace_back(dsLayoutBinding);
         }
         {
@@ -1540,7 +1541,7 @@ void VkApplication::bindResourceToDescriptorSets()
 {
     // for ubo
     ASSERT(_descriptorSetsForUbo.size() == MAX_FRAMES_IN_FLIGHT, "ubo descriptor set has frame_in_flight");
-    // extra: 
+    // extra:
     // 1. ssbo for vb
     // 2. ssbo for indirectdraw
     // 3. textures + samplers
@@ -1607,77 +1608,51 @@ void VkApplication::bindResourceToDescriptorSets()
     }
 
     // for glb textures
+    std::vector<VkDescriptorImageInfo> glbTextureImageInfos;
+    glbTextureImageInfos.reserve(_glbImageViews.size());
+    for (const auto &imageView : _glbImageViews)
     {
-        VkDescriptorImageInfo imageInfo;
-        imageInfo.sampler = VK_NULL_HANDLE;
-        imageInfo.imageView = _glbImageViews[0];
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-        // std::vector<VkDescriptorImageInfo> imageInfos;
-        // imageInfos.push_back(imageInfo);
-
-        _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = _descriptorSetsForTextureAndSampler,
-            .dstBinding = 0,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-            .pImageInfo = &imageInfo,
-            .pBufferInfo = nullptr,
+        glbTextureImageInfos.emplace_back(VkDescriptorImageInfo{
+            .sampler = VK_NULL_HANDLE,
+            .imageView = imageView,
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         });
-
-        //        const auto imageCt = _glbImageViews.size();
-        //        std::vector<VkDescriptorImageInfo> imageInfos;
-        //        imageInfos.reserve(imageCt);
-        //        for (const auto &imageView: _glbImageViews) {
-        //            imageInfos.emplace_back(VkDescriptorImageInfo{
-        //                    .sampler = VK_NULL_HANDLE,
-        //                    .imageView = imageView,
-        //                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        //            });
-        //        }
-        //
-        //        _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
-        //                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        //                .dstSet = _descriptorSetsForTextureAndSampler,
-        //                .dstBinding = 1,
-        //                .dstArrayElement = 0,
-        //                .descriptorCount = static_cast<uint32_t>(imageInfos.size()),
-        //                .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-        //                .pImageInfo = imageInfos.data(),
-        //                .pBufferInfo = nullptr,
-        //        });
     }
+
+    // pay attention to the scope of pointer imageInfos.data()
+    _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = _descriptorSetsForTextureAndSampler,
+        .dstBinding = 0,
+        .dstArrayElement = 0,
+        .descriptorCount = static_cast<uint32_t>(glbTextureImageInfos.size()),
+        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+        .pImageInfo = glbTextureImageInfos.data(),
+        .pBufferInfo = nullptr,
+    });
 
     // for glb samplers
+    std::vector<VkDescriptorImageInfo> glbTextureSamplerInfos;
+    glbTextureSamplerInfos.reserve(_glbSamplers.size());
+    for (const auto &sampler : _glbSamplers)
     {
-        VkDescriptorImageInfo samplerInfo;
-        samplerInfo.sampler = _glbSamplers[0];
-        samplerInfo.imageView = VK_NULL_HANDLE;
-        samplerInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        //
-        //        const auto samplersCt = _glbSamplers.size();
-        //        std::vector<VkDescriptorImageInfo> samplerInfos;
-        //        samplerInfos.reserve(samplersCt);
-        //        for (const auto &sampler: _glbSamplers) {
-        //            samplerInfos.emplace_back(VkDescriptorImageInfo{
-        //                    .sampler = sampler,
-        //                    .imageView = VK_NULL_HANDLE,
-        //                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        //            });
-        //        }
-        _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = _descriptorSetsForTextureAndSampler,
-            .dstBinding = 1,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
-            .pImageInfo = &samplerInfo,
-            .pBufferInfo = nullptr,
+        glbTextureSamplerInfos.emplace_back(VkDescriptorImageInfo{
+            .sampler = sampler,
+            .imageView = VK_NULL_HANDLE,
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         });
     }
+
+    _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = _descriptorSetsForTextureAndSampler,
+        .dstBinding = 1,
+        .dstArrayElement = 0,
+        .descriptorCount = static_cast<uint32_t>(glbTextureSamplerInfos.size()),
+        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
+        .pImageInfo = glbTextureSamplerInfos.data(),
+        .pBufferInfo = nullptr,
+    });
 
     {
         VkDescriptorBufferInfo bufferInfo{};
@@ -2661,7 +2636,7 @@ void VkApplication::postHostDeviceIO()
 
 void VkApplication::loadGLB()
 {
-    std::string filename = getAssetPath() + "\\BoxTextured.glb";
+    std::string filename = getAssetPath() + "\\" + _model;
 
     std::vector<char> glbContent;
 

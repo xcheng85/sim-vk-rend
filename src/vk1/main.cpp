@@ -35,13 +35,39 @@ uint64_t gLastFrame{0};
 
 int main(int argc, char **argv)
 {
-    // BoxTextured.glb
+    // // BoxTextured.glb
+    // Camera _camera{
+    //     vec3f(std::array{0.f, 0.f, 6.f}),    // pos
+    //     vec3f(std::array{0.f, 0.f, 0.f}),    // target -z
+    //     vec3f(std::array{0.0f, 1.0f, 1.0f}), // initial world up
+    //     0.0f,                                // initial pitch
+    //     -97.f                                // initial yaw
+    // };
+
+    // // Avocado.glb
+    // Camera _camera{
+    //     vec3f(std::array{0.0f, 0.031400f, 0.1f}),           // pos
+    //     vec3f(std::array{0.000000f, 0.031400f, 0.000000f}), // target -z
+    //     vec3f(std::array{0.0f, 1.0f, 0.0f}),                // initial world up
+    //     0.0f,                                               // initial pitch
+    //     -97.f                                               // initial yaw
+    // };
+
+    // // Duck.glb
+    // Camera _camera{
+    //     vec3f(std::array{13.440697f, 86.949684f, 400.0f}),     // pos
+    //     vec3f(std::array{13.440697f, 86.949684f, -3.701500f}), // target -z
+    //     vec3f(std::array{0.0f, 1.0f, 0.0f}),                   // initial world up
+    //     0.0f,                                                  // initial pitch
+    //     -97.f                                                  // initial yaw
+    // };
+    // AnisotropyBarnLamp
     Camera _camera{
-        vec3f(std::array{0.f, 0.f, 6.f}),    // pos
-        vec3f(std::array{0.f, 0.f, 0.f}),    // target -z
-        vec3f(std::array{0.0f, 1.0f, 1.0f}), // initial world up
-        0.0f,                                // initial pitch
-        -97.f                                // initial yaw
+        vec3f(std::array{-0.009215f, -0.057677f, 1.f}),       // pos
+        vec3f(std::array{-0.009215f, -0.057677f, 0.113268f}), // target -z
+        vec3f(std::array{0.0f, 1.0f, 0.0f}),                  // initial world up
+        0.0f,                                                 // initial pitch
+        -90.f                                                 // initial yaw
     };
 
     WindowConfig cfg{
@@ -56,7 +82,7 @@ int main(int argc, char **argv)
     // glslang_initialize_process();
     glslang::InitializeProcess();
 
-    VkApplication vkApp(window, _camera);
+    VkApplication vkApp(window, _camera, "AnisotropyBarnLamp.glb"s);
     vkApp.init();
 
     // init();
@@ -65,9 +91,9 @@ int main(int argc, char **argv)
     while (gRunning)
     {
         auto currTime = SDL_GetPerformanceCounter();
-        //auto currTime = SDL_GetTicks();
-        //gDt = (currTime - gLastFrame) / 1000.0; // Convert to seconds.
-        // gDt = currTime - gLastFrame;
+        // auto currTime = SDL_GetTicks();
+        // gDt = (currTime - gLastFrame) / 1000.0; // Convert to seconds.
+        //  gDt = currTime - gLastFrame;
         gDt = static_cast<double>(
             (currTime - gLastFrame) / static_cast<double>(SDL_GetPerformanceFrequency()));
         gLastFrame = currTime;

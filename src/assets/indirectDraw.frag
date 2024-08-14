@@ -24,7 +24,7 @@ void main()
   // -1 is from glb io reader
   if (basecolorTextureId != -1) {
     // create the sampler2D first
-    outFragColor = texture(sampler2D(BindlessImage2D[0], BindlessSampler), inTexCoord);
+    outFragColor = texture(sampler2D(BindlessImage2D[basecolorTextureId], BindlessSampler), inTexCoord);
   } else {
     outFragColor = vec4(0.5, .5, 0.5, 1.0);
   }

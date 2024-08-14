@@ -129,8 +129,8 @@ class VkApplication
 {
 public:
     VkApplication() = delete;
-    VkApplication(const Window &window, const Camera &camera) 
-    : _window(window), _camera(camera)
+    VkApplication(const Window &window, const Camera &camera, const std::string& model) 
+    : _window(window), _camera(camera), _model(model)
     {
     }
     void init();
@@ -218,6 +218,7 @@ private:
 
     const Window &_window;
     const Camera &_camera;
+    std::string _model;
     bool _initialized{false};
     bool _enableValidationLayers{true};
     const std::vector<const char *> _validationLayers = {

@@ -495,42 +495,8 @@ private:
     // samplers in the glb scene
     std::vector<VkSampler> _glbSamplers;
 
-    // camera
-    // camera controller
-    //    // Duck.glb
-    //    Camera _camera{
-    //            vec3f(std::array{13.440697f, 86.949684f, 400.0f}), // pos
-    //            vec3f(std::array{13.440697f, 86.949684f, -3.701500f}), // target -z
-    //            vec3f(std::array{0.0f, 1.0f, 0.0f}),  // initial world up
-    //            0.0f,                                 // initial pitch
-    //            -97.f                                 // initial yaw
-    //    };
 
-    // // BoxTextured.glb
-    // Camera _camera{
-    //     vec3f(std::array{0.f, 0.f, 6.f}),    // pos
-    //     vec3f(std::array{0.f, 0.f, 0.f}),    // target -z
-    //     vec3f(std::array{0.0f, 1.0f, 1.0f}), // initial world up
-    //     0.0f,                                // initial pitch
-    //     -97.f                                // initial yaw
-    // };
 
-    //  //Avacado.glb
-    //    Camera _camera{
-    //            vec3f(std::array{0.0f, 0.031400f, 0.1f}), // pos
-    //            vec3f(std::array{0.000000f, 0.031400f, 0.000000f}), // target -z
-    //            vec3f(std::array{0.0f, 1.0f, 0.0f}),  // initial world up
-    //            0.0f,                                 // initial pitch
-    //            -97.f                                 // initial yaw
-    //    };
-    //    // BoomBox
-    //    Camera _camera{
-    //            vec3f(std::array{0.0f, 0.0f, 0.1f}), // pos
-    //            vec3f(std::array{0.000000f, 0.000f, 0.000000f}), // target -z
-    //            vec3f(std::array{0.0f, 1.0f, 0.0f}),  // initial world up
-    //            0.0f,                                 // initial pitch
-    //            -97.f                                 // initial yaw
-    //    };
     //    Camera _camera{
     //            vec3f(std::array{0.079639f, 0.511857f, 4.f}), // pos
     //            vec3f(std::array{0.079639f, 0.511857f, 0.483869f}), // target -z
@@ -539,39 +505,5 @@ private:
     //            -97.f                                 // initial yaw
     //    };
 
-    //////// MaterialsVariantsShoe.glb
-    //    Camera _camera{
-    //            vec3f(std::array{0.0f, 0.f, 7.f}), // pos
-    //            vec3f(std::array{0.0f, 0.f, 0.f}), // target -z
-    //            vec3f(std::array{0.0f, 1.0f, 0.0f}),  // initial world up
-    //            0.0f,                                 // initial pitch
-    //            -90.f                                 // initial yaw
-    //    };
 
-    //// duck
-    //    Camera _camera{
-    //            vec3f(std::array{13.440697f, 86.949684f, 480.f}), // pos
-    //            vec3f(std::array{13.440697f, 86.949684f, -3.701500f}), // target -z
-    //            vec3f(std::array{0.0f, 1.0f, 0.0f}),  // initial world up
-    //            0.0f,                                 // initial pitch
-    //            -90.f                                 // initial yaw
-    //    };
-    //
-    //// AntiqueCamera
-    //    Camera _camera{
-    //            vec3f(std::array{0.000000f, 11.020121f, 10.f}), // pos
-    //            vec3f(std::array{0.000000f, 11.020121f, 0.000000f}), // target -z
-    //            vec3f(std::array{0.0f, 1.0f, 0.0f}),  // initial world up
-    //            0.0f,                                 // initial pitch
-    //            -90.f                                 // initial yaw
-    //    };
-
-    //    // AnisotropyBarnLamp
-    //    Camera _camera{
-    //            vec3f(std::array{-0.009215f, -0.057677f, 1.f}), // pos
-    //            vec3f(std::array{-0.009215f, -0.057677f, 0.113268f}), // target -z
-    //            vec3f(std::array{0.0f, 1.0f, 0.0f}),  // initial world up
-    //            0.0f,                                 // initial pitch
-    //            -90.f                                 // initial yaw
-    //    };
 };

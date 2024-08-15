@@ -36,13 +36,13 @@ uint64_t gLastFrame{0};
 int main(int argc, char **argv)
 {
     // BoxTextured.glb
-    Camera _camera{
-        vec3f(std::array{0.f, 0.f, 6.f}),    // pos
-        vec3f(std::array{0.f, 0.f, 0.f}),    // target -z
-        vec3f(std::array{0.0f, 1.0f, 1.0f}), // initial world up
-        0.0f,                                // initial pitch
-        -97.f                                // initial yaw
-    };
+    // Camera _camera{
+    //     vec3f(std::array{0.f, 0.f, 6.f}),    // pos
+    //     vec3f(std::array{0.f, 0.f, 0.f}),    // target -z
+    //     vec3f(std::array{0.0f, 1.0f, 1.0f}), // initial world up
+    //     0.0f,                                // initial pitch
+    //     -97.f                                // initial yaw
+    // };
 
     // // Avocado.glb
     // Camera _camera{
@@ -71,10 +71,52 @@ int main(int argc, char **argv)
     //     -90.f                                                 // initial yaw
     // };
 
-    WindowConfig cfg{
-        1920,
-        1080,
-        "demo"s};
+    // // AntiqueCamera
+    // Camera _camera{
+    //     vec3f(std::array{-0.327268f, -2.70912f, 5.f}),      // pos
+    //     vec3f(std::array{-0.327268f, -2.70912f, 0.19766f}), // target -z
+    //     vec3f(std::array{0.0f, 1.0f, 0.0f}),                 // initial world up
+    //     0.0f,                                                // initial pitch
+    //     -90.f                                                // initial yaw
+    // };
+
+    // // duck
+    // Camera _camera{
+    //     vec3f(std::array{13.440697f, 86.949684f, 200.f}),      // pos
+    //     vec3f(std::array{13.440697f, 86.949684f, -3.701500f}), // target -z
+    //     vec3f(std::array{0.0f, 1.0f, 0.0f}),                   // initial world up
+    //     0.0f,                                                  // initial pitch
+    //     -90.f                                                  // initial yaw
+    // };
+
+    // ////// MaterialsVariantsShoe.glb
+    // Camera _camera{
+    //     vec3f(std::array{0.0f, 0.f, 7.f}),   // pos
+    //     vec3f(std::array{0.0f, 0.f, 0.f}),   // target -z
+    //     vec3f(std::array{0.0f, 1.0f, 0.0f}), // initial world up
+    //     0.0f,                                // initial pitch
+    //     -90.f                                // initial yaw
+    // };
+
+    //// BoomBox
+    // Camera _camera{
+    //     vec3f(std::array{0.0f, 0.0f, 0.1f}),             // pos
+    //     vec3f(std::array{0.000000f, 0.000f, 0.000000f}), // target -z
+    //     vec3f(std::array{0.0f, 1.0f, 0.0f}),             // initial world up
+    //     0.0f,                                            // initial pitch
+    //     -97.f                                            // initial yaw
+    // };
+
+    // BarramundiFish
+    Camera _camera{
+        vec3f(std::array{0.00238983f, -0.142875f, 0.6f}),        // pos
+        vec3f(std::array{0.00238983f, -0.142875f, 0.00381729f}), // target -z
+        vec3f(std::array{0.0f, 0.0f, 1.0f}),                     // initial world up
+        0.0f,                                                    // initial pitch
+        -97.f                                                    // initial yaw
+    };
+
+    WindowConfig cfg{1920, 1080, "demo"s};
 
     Window window(&cfg, _camera);
 
@@ -83,7 +125,7 @@ int main(int argc, char **argv)
     // glslang_initialize_process();
     glslang::InitializeProcess();
 
-    VkApplication vkApp(window, _camera, "BoxTextured.glb"s);
+    VkApplication vkApp(window, _camera, "BarramundiFish.glb"s);
     vkApp.init();
 
     // init();

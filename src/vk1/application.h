@@ -78,59 +78,24 @@ void setCorrlationId(T handle, VkDevice logicalDevice, VkObjectType type, const 
     VK_CHECK(vkSetDebugUtilsObjectNameEXT(logicalDevice, &objectNameInfo));
 }
 
-inline const std::set<std::string> &getInstanceExtensions()
-{
-    static std::set<std::string> instanceExtensions = {
-        "VK_KHR_surface",
-        "VK_KHR_display",
-#if defined(VK_USE_PLATFORM_XLIB_KHR)
-        "VK_KHR_xlib_surface",
-#endif /*VK_USE_PLATFORM_XLIB_KHR*/
-#if defined(VK_USE_PLATFORM_XCB_KHR)
-        "VK_KHR_xcb_surface",
-#endif /*VK_USE_PLATFORM_XCB_KHR*/
-#if defined(VK_USE_PLATFORM_WAYLAND_KHR)
-        "VK_KHR_wayland_surface",
-#endif /*VK_USE_PLATFORM_WAYLAND_KHR*/
-#if defined(VK_USE_PLATFORM_ANDROID_KHR)
-        "VK_KHR_android_surface",
-#endif /*VK_USE_PLATFORM_ANDROID_KHR*/
-#if defined(VK_USE_PLATFORM_WIN32_KHR)
-        "VK_KHR_win32_surface",
-#endif /*VK_USE_PLATFORM_WIN32_KHR*/
-        "VK_EXT_debug_report",
-        // "VK_NV_external_memory_capabilities",
-        "VK_KHR_get_physical_device_properties2",
-        //"VK_EXT_validation_flags", //deprecated by VK_EXT_layer_settings
-        "VK_KHR_device_group_creation",
-        "VK_KHR_external_memory_capabilities",
-        "VK_KHR_external_semaphore_capabilities",
-        "VK_EXT_direct_mode_display",
-        // "VK_EXT_display_surface_counter",
-        "VK_EXT_swapchain_colorspace",
-        "VK_KHR_external_fence_capabilities",
-        "VK_KHR_get_surface_capabilities2",
-        "VK_KHR_get_display_properties2",
-        "VK_EXT_debug_utils",
-        // "VK_KHR_surface_protected_capabilities",
-        "VK_EXT_validation_features",
-        // "VK_EXT_headless_surface",
-        "VK_EXT_surface_maintenance1",
-        // "VK_EXT_acquire_drm_display",
-        "VK_KHR_portability_enumeration",
-        // "VK_GOOGLE_surfaceless_query",
-        "VK_LUNARG_direct_driver_loading",
-        "VK_EXT_layer_settings"};
-    return instanceExtensions;
-}
-
 class Window;
 class VkApplication
 {
 public:
     VkApplication() = delete;
-    VkApplication(const Window &window, const Camera &camera, const std::string& model) 
-    : _window(window), _camera(camera), _model(model)
+    VkApplication(
+        const Window &window,
+        const std::vector<const char *> &instanceValidationLayers,
+        const std::set<std::string> &instanceExtensions,
+        const std::vector<const char *> deviceExtensions,
+        const Camera &camera,
+        const std::string &model)
+        : _window(window),
+          _instanceValidationLayers(instanceValidationLayers),
+          _instanceExtensions(instanceExtensions),
+          _deviceExtensions(deviceExtensions),
+          _camera(camera),
+          _model(model)
     {
     }
     void init();
@@ -218,11 +183,12 @@ private:
 
     const Window &_window;
     const Camera &_camera;
+    const std::vector<const char *> _instanceValidationLayers;
+    const std::set<std::string> &_instanceExtensions;
     std::string _model;
+
     bool _initialized{false};
     bool _enableValidationLayers{true};
-    const std::vector<const char *> _validationLayers = {
-        "VK_LAYER_KHRONOS_validation"};
 
     // features chains
     // now is to toggle features selectively
@@ -239,28 +205,7 @@ private:
     static VkPhysicalDeviceRayTracingPipelineFeaturesKHR sRayTracingPipelineFeatures;
     static VkPhysicalDeviceRayQueryFeaturesKHR sRayQueryFeatures;
 
-    const std::vector<const char *> _deviceExtensions = {
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-        VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,
-        VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
-        // VkPhysicalDeviceVulkan11Features::shaderDrawParameters nees to be set VK_TRUE
-        VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME, 
-        VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,
-        VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
-        VK_NV_MESH_SHADER_EXTENSION_NAME,            // mesh_shaders_extension_present
-        VK_KHR_MULTIVIEW_EXTENSION_NAME,             // multiview_extension_present
-        VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME, // fragment_shading_rate_present
-        VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME,
-        VK_KHR_MAINTENANCE2_EXTENSION_NAME,
-        VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, // ray_tracing_present
-        VK_KHR_SPIRV_1_4_EXTENSION_NAME,
-        VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME, // for ray tracing
-        VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
-        VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME, // for ray tracing
-        VK_KHR_RAY_QUERY_EXTENSION_NAME,                // ray query needed for raytracing
-        VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME,
-        VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
-    };
+    const std::vector<const char *> _deviceExtensions;
 
 #if defined(__ANDROID__)
     // android specific
@@ -494,16 +439,4 @@ private:
 
     // samplers in the glb scene
     std::vector<VkSampler> _glbSamplers;
-
-
-
-    //    Camera _camera{
-    //            vec3f(std::array{0.079639f, 0.511857f, 4.f}), // pos
-    //            vec3f(std::array{0.079639f, 0.511857f, 0.483869f}), // target -z
-    //            vec3f(std::array{0.0f, 1.0f, 0.0f}),  // initial world up
-    //            0.0f,                                 // initial pitch
-    //            -97.f                                 // initial yaw
-    //    };
-
-
 };

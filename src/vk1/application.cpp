@@ -22,6 +22,8 @@ void VkApplication::init()
     selectFeatures();
     createLogicDevice();
     cacheCommandQueue();
+
+
     createVMA();
     prepareSwapChainCreation();
     createSwapChain();
@@ -341,7 +343,7 @@ void VkApplication::createInstance()
     //         // VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,
     //     };
 
-    const auto instanceExtensionSets = getInstanceExtensions();
+    const auto& instanceExtensionSets = _instanceExtensions;
     std::vector<const char *> instanceExtensions;
     std::transform(instanceExtensionSets.begin(), instanceExtensionSets.end(),
                    std::back_inserter(instanceExtensions),
@@ -365,8 +367,8 @@ void VkApplication::createInstance()
     if (_enableValidationLayers)
     {
         createInfo.enabledLayerCount =
-            static_cast<uint32_t>(_validationLayers.size());
-        createInfo.ppEnabledLayerNames = _validationLayers.data();
+            static_cast<uint32_t>(_instanceValidationLayers.size());
+        createInfo.ppEnabledLayerNames = _instanceValidationLayers.data();
         createInfo.pNext = &validationFeatures;
     }
     else
@@ -813,8 +815,8 @@ void VkApplication::createLogicDevice()
     logicDeviceCreateInfo.enabledExtensionCount = _deviceExtensions.size();
     logicDeviceCreateInfo.ppEnabledExtensionNames = _deviceExtensions.data();
     logicDeviceCreateInfo.enabledLayerCount =
-        static_cast<uint32_t>(_validationLayers.size());
-    logicDeviceCreateInfo.ppEnabledLayerNames = _validationLayers.data();
+        static_cast<uint32_t>(_instanceValidationLayers.size());
+    logicDeviceCreateInfo.ppEnabledLayerNames = _instanceValidationLayers.data();
     // when using VkPhysicalDeviceFeatures2, pEnabledFeatures set to be nullptr;
     logicDeviceCreateInfo.pNext = _featureChain.header();
     logicDeviceCreateInfo.pEnabledFeatures = nullptr;
@@ -2040,7 +2042,7 @@ bool VkApplication::checkValidationLayerSupport()
         log(Level::Info, layer);
     }
 
-    for (const char *layerName : _validationLayers)
+    for (const char *layerName : _instanceValidationLayers)
     {
         bool layerFound = false;
         for (const auto &layerProperties : availableLayers)

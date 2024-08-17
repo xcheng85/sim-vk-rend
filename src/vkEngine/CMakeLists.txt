@@ -11,6 +11,7 @@ message(${stb_SOURCE_DIR})
 target_link_libraries(
     vkEngine
     GLTFSDK
+    ${Vulkan_LIBRARIES} volk_headers ${RequiredVulkanSDKLIBS}
 )
 
 target_include_directories(vkEngine PUBLIC

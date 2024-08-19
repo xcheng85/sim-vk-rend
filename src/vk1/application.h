@@ -42,7 +42,6 @@
 #include <vk_mem_alloc.h>
 
 #include <misc.h>
-#include <camera.h>
 #include <glb.h>
 
 #if defined(__ANDROID__)
@@ -65,37 +64,18 @@ struct AndroidNativeWindowDeleter
 #endif
 #endif
 
-template <typename T>
-void setCorrlationId(T handle, VkDevice logicalDevice, VkObjectType type, const std::string &name)
-{
-    const VkDebugUtilsObjectNameInfoEXT objectNameInfo = {
-        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
-        .objectType = type,
-        .objectHandle = reinterpret_cast<uint64_t>(handle),
-        .pObjectName = name.c_str(),
-    };
-
-    VK_CHECK(vkSetDebugUtilsObjectNameEXT(logicalDevice, &objectNameInfo));
-}
-
 class Window;
+class Camera;
+class VkContext;
 class VkApplication
 {
 public:
     VkApplication() = delete;
     VkApplication(
-        const Window &window,
-        const std::vector<const char *> &instanceValidationLayers,
-        const std::set<std::string> &instanceExtensions,
-        const std::vector<const char *> deviceExtensions,
-        const Camera &camera,
-        const std::string &model)
-        : _window(window),
-          _instanceValidationLayers(instanceValidationLayers),
-          _instanceExtensions(instanceExtensions),
-          _deviceExtensions(deviceExtensions),
-          _camera(camera),
-          _model(model)
+        const VkContext &ctx, 
+    const Camera& camera,
+    const std::string& model) 
+    : _ctx(ctx), _camera(camera), _model(model)
     {
     }
     void init();
@@ -104,16 +84,16 @@ public:
     void renderPerFrame();
 
 private:
-    void createInstance();
-    void createSurface();
-    void selectPhysicalDevice();
-    void queryPhysicalDeviceCaps();
-    void selectQueueFamily();
-    // feature chain
-    void selectFeatures();
-    void createLogicDevice();
-    void cacheCommandQueue();
-    void createVMA();
+    // void createInstance();
+    // void createSurface();
+    // void selectPhysicalDevice();
+    // void queryPhysicalDeviceCaps();
+    // void selectQueueFamily();
+    // // feature chain
+    // void selectFeatures();
+    // void createLogicDevice();
+    // void cacheCommandQueue();
+    // void createVMA();
     // only depends on vk surface, one time deal
     void prepareSwapChainCreation();
     // called every resize();
@@ -152,25 +132,25 @@ private:
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
     void createPerFrameSyncObjects();
 
-    // device cap check
-    bool checkValidationLayerSupport();
+    // // device cap check
+    // bool checkValidationLayerSupport();
 
-    // vkGetPhysicalDeviceFeatures2 + linkedlist to fill in
-    inline bool checkRayTracingSupport()
-    {
-        return (_accelStructFeature.accelerationStructure &&
-                _rayTracingFeature.rayTracingPipeline && _rayQueryFeature.rayQuery);
-    }
+    // // vkGetPhysicalDeviceFeatures2 + linkedlist to fill in
+    // inline bool checkRayTracingSupport()
+    // {
+    //     return (_accelStructFeature.accelerationStructure &&
+    //             _rayTracingFeature.rayTracingPipeline && _rayQueryFeature.rayQuery);
+    // }
 
-    inline bool isMultiviewSupported() const
-    {
-        return _vk11features.multiview;
-    }
+    // inline bool isMultiviewSupported() const
+    // {
+    //     return _vk11features.multiview;
+    // }
 
-    inline bool isFragmentDensityMapSupported() const
-    {
-        return _fragmentDensityMapFeature.fragmentDensityMap == VK_TRUE;
-    }
+    // inline bool isFragmentDensityMapSupported() const
+    // {
+    //     return _fragmentDensityMapFeature.fragmentDensityMap == VK_TRUE;
+    // }
 
     // app-specific
     void preHostDeviceIO();
@@ -181,136 +161,138 @@ private:
     void loadGLB();
     void postHostDeviceIO();
 
-    const Window &_window;
+    const VkContext &_ctx;
+
+    //     const Window &_window;
     const Camera &_camera;
-    const std::vector<const char *> _instanceValidationLayers;
-    const std::set<std::string> &_instanceExtensions;
+    //     const std::vector<const char *> _instanceValidationLayers;
+    //     const std::set<std::string> &_instanceExtensions;
     std::string _model;
 
-    bool _initialized{false};
-    bool _enableValidationLayers{true};
+    //     bool _initialized{false};
+    //     bool _enableValidationLayers{true};
 
-    // features chains
-    // now is to toggle features selectively
-    // enable features
-    static VkPhysicalDeviceFeatures sPhysicalDeviceFeatures; // cannot fly without sPhysicalDeviceFeatures2
-    static VkPhysicalDeviceFeatures2 sPhysicalDeviceFeatures2;
+    //     // features chains
+    //     // now is to toggle features selectively
+    //     // enable features
+    //     static VkPhysicalDeviceFeatures sPhysicalDeviceFeatures; // cannot fly without sPhysicalDeviceFeatures2
+    //     static VkPhysicalDeviceFeatures2 sPhysicalDeviceFeatures2;
 
-    static VkPhysicalDeviceVulkan11Features sEnable11Features;
-    static VkPhysicalDeviceVulkan12Features sEnable12Features;
-    static VkPhysicalDeviceVulkan13Features sEnable13Features;
-    static VkPhysicalDeviceFragmentDensityMapFeaturesEXT sFragmentDensityMapFeatures;
-    // for ray-tracing
-    static VkPhysicalDeviceAccelerationStructureFeaturesKHR sAccelStructFeatures;
-    static VkPhysicalDeviceRayTracingPipelineFeaturesKHR sRayTracingPipelineFeatures;
-    static VkPhysicalDeviceRayQueryFeaturesKHR sRayQueryFeatures;
+    //     static VkPhysicalDeviceVulkan11Features sEnable11Features;
+    //     static VkPhysicalDeviceVulkan12Features sEnable12Features;
+    //     static VkPhysicalDeviceVulkan13Features sEnable13Features;
+    //     static VkPhysicalDeviceFragmentDensityMapFeaturesEXT sFragmentDensityMapFeatures;
+    //     // for ray-tracing
+    //     static VkPhysicalDeviceAccelerationStructureFeaturesKHR sAccelStructFeatures;
+    //     static VkPhysicalDeviceRayTracingPipelineFeaturesKHR sRayTracingPipelineFeatures;
+    //     static VkPhysicalDeviceRayQueryFeaturesKHR sRayQueryFeatures;
 
-    const std::vector<const char *> _deviceExtensions;
+    //     const std::vector<const char *> _deviceExtensions;
 
-#if defined(__ANDROID__)
-    // android specific
-    std::unique_ptr<ANativeWindow, AndroidNativeWindowDeleter> _osWindow;
-    AAssetManager *_assetManager;
-#endif
-    VkInstance _instance{VK_NULL_HANDLE};
-    VkSurfaceKHR _surface{VK_NULL_HANDLE};
-    VkDebugUtilsMessengerEXT _debugMessenger;
+    // #if defined(__ANDROID__)
+    //     // android specific
+    //     std::unique_ptr<ANativeWindow, AndroidNativeWindowDeleter> _osWindow;
+    //     AAssetManager *_assetManager;
+    // #endif
+    //     VkInstance _instance{VK_NULL_HANDLE};
+    //     VkSurfaceKHR _surface{VK_NULL_HANDLE};
+    //     VkDebugUtilsMessengerEXT _debugMessenger;
 
-    VkPhysicalDevice _selectedPhysicalDevice{VK_NULL_HANDLE};
-    VkPhysicalDeviceProperties _physicalDevicesProp1;
+    //     VkPhysicalDevice _selectedPhysicalDevice{VK_NULL_HANDLE};
+    //     VkPhysicalDeviceProperties _physicalDevicesProp1;
 
-    VkStructChain<> _featureChain;
+    //     VkStructChain<> _featureChain;
 
-    // features supported by the selected physical device
-    // KHR, ext, not in core features
-    // VkPhysicalDeviceAccelerationStructureFeaturesKHR
-    // VkPhysicalDeviceRayQueryFeaturesKHR
-    // nv specific
-    // VkPhysicalDeviceMeshShaderFeaturesNV
-    VkPhysicalDeviceFragmentDensityMapOffsetFeaturesQCOM _fragmentDensityMapOffsetFeature{
-        .sType =
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_OFFSET_FEATURES_QCOM,
-        .pNext = nullptr,
-    };
+    //     // features supported by the selected physical device
+    //     // KHR, ext, not in core features
+    //     // VkPhysicalDeviceAccelerationStructureFeaturesKHR
+    //     // VkPhysicalDeviceRayQueryFeaturesKHR
+    //     // nv specific
+    //     // VkPhysicalDeviceMeshShaderFeaturesNV
+    //     VkPhysicalDeviceFragmentDensityMapOffsetFeaturesQCOM _fragmentDensityMapOffsetFeature{
+    //         .sType =
+    //             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_OFFSET_FEATURES_QCOM,
+    //         .pNext = nullptr,
+    //     };
 
-    VkPhysicalDeviceFragmentDensityMapFeaturesEXT _fragmentDensityMapFeature{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT,
-        .pNext = &_fragmentDensityMapOffsetFeature,
-    };
+    //     VkPhysicalDeviceFragmentDensityMapFeaturesEXT _fragmentDensityMapFeature{
+    //         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT,
+    //         .pNext = &_fragmentDensityMapOffsetFeature,
+    //     };
 
-    VkPhysicalDeviceMeshShaderFeaturesNV _meshShaderFeature{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV,
-        .pNext = (void *)&_fragmentDensityMapFeature,
-    };
+    //     VkPhysicalDeviceMeshShaderFeaturesNV _meshShaderFeature{
+    //         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV,
+    //         .pNext = (void *)&_fragmentDensityMapFeature,
+    //     };
 
-    VkPhysicalDeviceRayQueryFeaturesKHR _rayQueryFeature{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR,
-        .pNext = (void *)&_meshShaderFeature,
-    };
+    //     VkPhysicalDeviceRayQueryFeaturesKHR _rayQueryFeature{
+    //         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR,
+    //         .pNext = (void *)&_meshShaderFeature,
+    //     };
 
-    VkPhysicalDeviceRayTracingPipelineFeaturesKHR _rayTracingFeature{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
-        .pNext = (void *)&_rayQueryFeature,
-    };
+    //     VkPhysicalDeviceRayTracingPipelineFeaturesKHR _rayTracingFeature{
+    //         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
+    //         .pNext = (void *)&_rayQueryFeature,
+    //     };
 
-    VkPhysicalDeviceAccelerationStructureFeaturesKHR _accelStructFeature{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
-        .pNext = (void *)&_rayTracingFeature,
-    };
+    //     VkPhysicalDeviceAccelerationStructureFeaturesKHR _accelStructFeature{
+    //         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
+    //         .pNext = (void *)&_rayTracingFeature,
+    //     };
 
-    VkPhysicalDeviceVulkan11Features _vk11features{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-        .pNext = (void *)&_accelStructFeature,
-    };
-    VkPhysicalDeviceVulkan12Features _vk12features{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-        .pNext = (void *)&_vk11features,
-    };
-    VkPhysicalDeviceVulkan13Features _vk13features{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-        .pNext = (void *)&_vk12features,
-    };
-    VkPhysicalDeviceFeatures2 _physicalFeatures2{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .pNext = (void *)&_vk13features,
-    };
-    // included in v1.1
-    // VkPhysicalDeviceMultiviewFeatures
-    // included in v1.2
-    // VkPhysicalDeviceBufferDeviceAddressFeatures
-    // VkPhysicalDeviceDescriptorIndexingFeatures
-    // VkPhysicalDeviceTimelineSemaphoreFeatures
+    //     VkPhysicalDeviceVulkan11Features _vk11features{
+    //         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+    //         .pNext = (void *)&_accelStructFeature,
+    //     };
+    //     VkPhysicalDeviceVulkan12Features _vk12features{
+    //         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+    //         .pNext = (void *)&_vk11features,
+    //     };
+    //     VkPhysicalDeviceVulkan13Features _vk13features{
+    //         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+    //         .pNext = (void *)&_vk12features,
+    //     };
+    //     VkPhysicalDeviceFeatures2 _physicalFeatures2{
+    //         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+    //         .pNext = (void *)&_vk13features,
+    //     };
+    //     // included in v1.1
+    //     // VkPhysicalDeviceMultiviewFeatures
+    //     // included in v1.2
+    //     // VkPhysicalDeviceBufferDeviceAddressFeatures
+    //     // VkPhysicalDeviceDescriptorIndexingFeatures
+    //     // VkPhysicalDeviceTimelineSemaphoreFeatures
 
-    // device properties
-    VkPhysicalDeviceProperties2 _properties{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
-        //.pNext = &rayTracingPipelineProperties_,
-    };
-    // header of linked list to create logic device
-    VkPhysicalDeviceFeatures2 _enabledDeviceFeatures;
+    //     // device properties
+    //     VkPhysicalDeviceProperties2 _properties{
+    //         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+    //         //.pNext = &rayTracingPipelineProperties_,
+    //     };
+    //     // header of linked list to create logic device
+    //     VkPhysicalDeviceFeatures2 _enabledDeviceFeatures;
 
-    VkDevice _logicalDevice{VK_NULL_HANDLE};
-    bool _bindlessSupported{false};
-    bool _protectedMemory{false};
+    //     VkDevice _logicalDevice{VK_NULL_HANDLE};
+    //     bool _bindlessSupported{false};
+    //     bool _protectedMemory{false};
 
-    uint32_t _graphicsComputeQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
-    uint32_t _computeQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
-    uint32_t _transferQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
-    // family queue of discrete gpu support the surface of native window
-    uint32_t _presentQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
+    //     uint32_t _graphicsComputeQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
+    //     uint32_t _computeQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
+    //     uint32_t _transferQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
+    //     // family queue of discrete gpu support the surface of native window
+    //     uint32_t _presentQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
 
-    // each queue family have many queues (16)
-    // I choose 0 as graphics, 1 as compute
-    uint32_t _graphicsQueueIndex{std::numeric_limits<uint32_t>::max()};
-    uint32_t _computeQueueIndex{std::numeric_limits<uint32_t>::max()};
+    //     // each queue family have many queues (16)
+    //     // I choose 0 as graphics, 1 as compute
+    //     uint32_t _graphicsQueueIndex{std::numeric_limits<uint32_t>::max()};
+    //     uint32_t _computeQueueIndex{std::numeric_limits<uint32_t>::max()};
 
-    VkQueue _graphicsQueue{VK_NULL_HANDLE};
-    VkQueue _computeQueue{VK_NULL_HANDLE};
-    VkQueue _transferQueue{VK_NULL_HANDLE};
-    VkQueue _presentationQueue{VK_NULL_HANDLE};
-    VkQueue _sparseQueues{VK_NULL_HANDLE};
+    //     VkQueue _graphicsQueue{VK_NULL_HANDLE};
+    //     VkQueue _computeQueue{VK_NULL_HANDLE};
+    //     VkQueue _transferQueue{VK_NULL_HANDLE};
+    //     VkQueue _presentationQueue{VK_NULL_HANDLE};
+    //     VkQueue _sparseQueues{VK_NULL_HANDLE};
 
-    VmaAllocator _vmaAllocator{VK_NULL_HANDLE};
+    //     VmaAllocator _vmaAllocator{VK_NULL_HANDLE};
 
     VkExtent2D _swapChainExtent;
     const uint32_t _swapChainImageCount{3};
@@ -337,7 +319,7 @@ private:
     // for all the layout(set=_, binding=_) in all the shader stage
     // refactoring to use _descriptorSetLayout per set
     // 0: ubo, 1: texture + sampler, 2: glb: ssbo
-    vector<VkDescriptorSetLayout> _descriptorSetLayouts;
+    std::vector<VkDescriptorSetLayout> _descriptorSetLayouts;
     VkDescriptorSetLayout _descriptorSetLayoutForUbo;
     // combined textures and sampler
     VkDescriptorSetLayout _descriptorSetLayoutForTextureSampler;
@@ -413,8 +395,8 @@ private:
 
     // glb scene
     // a lot of stageBuffers
-    vector<VkBuffer> _stagingVbForMesh;
-    vector<VkBuffer> _stagingIbForMesh;
+    std::vector<VkBuffer> _stagingVbForMesh;
+    std::vector<VkBuffer> _stagingIbForMesh;
     VkBuffer _stagingIndirectDrawBuffer{VK_NULL_HANDLE};
     VkBuffer _stagingMatBuffer{VK_NULL_HANDLE};
 

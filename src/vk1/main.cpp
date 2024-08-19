@@ -154,23 +154,23 @@ int main(int argc, char **argv)
     //      -97.f                                            // initial yaw
     //  };
 
-    //// BarramundiFish
-    // Camera _camera{
-    //     vec3f(std::array{0.00238983f, -0.142875f, 0.6f}),        // pos
-    //     vec3f(std::array{0.00238983f, -0.142875f, 0.00381729f}), // target -z
-    //     vec3f(std::array{0.0f, 0.0f, 1.0f}),                     // initial world up
-    //     0.0f,                                                    // initial pitch
-    //     -97.f                                                    // initial yaw
-    // };
+    // BarramundiFish
+     Camera _camera{
+         vec3f(std::array{0.00238983f, -0.142875f, 0.6f}),        // pos
+         vec3f(std::array{0.00238983f, -0.142875f, 0.00381729f}), // target -z
+         vec3f(std::array{0.0f, 0.0f, 1.0f}),                     // initial world up
+         0.0f,                                                    // initial pitch
+         -97.f                                                    // initial yaw
+     };
 
-    // CarbonFibre
-    Camera _camera{
-        vec3f(std::array{0.00238983f, -0.142875f, 0.6f}),        // pos
-        vec3f(std::array{0.00238983f, -0.142875f, 0.00381729f}), // target -z
-        vec3f(std::array{0.0f, 0.0f, 1.0f}),                     // initial world up
-        0.0f,                                                    // initial pitch
-        -97.f                                                    // initial yaw
-    };
+    //// CarbonFibre
+    //Camera _camera{
+    //    vec3f(std::array{0.00238983f, -0.142875f, 0.6f}),        // pos
+    //    vec3f(std::array{0.00238983f, -0.142875f, 0.00381729f}), // target -z
+    //    vec3f(std::array{0.0f, 0.0f, 1.0f}),                     // initial world up
+    //    0.0f,                                                    // initial pitch
+    //    -97.f                                                    // initial yaw
+    //};
     WindowConfig cfg{1920, 1080, "demo"s};
 
     Window window(&cfg, _camera);
@@ -206,13 +206,15 @@ int main(int argc, char **argv)
         VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
     };
 
-    VkApplication vkApp(
-        window,
+    VkContext ctx(window,
         instanceValidationLayers,
         instanceExtensions,
-        deviceExtensions,
+        deviceExtensions);
+
+    VkApplication vkApp(
+        ctx,
         _camera,
-        "CarbonFibre.glb"s);
+        "BarramundiFish.glb"s);
     vkApp.init();
 
     // init();

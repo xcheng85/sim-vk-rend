@@ -152,3 +152,16 @@ VkShaderModule createShaderModule(
     const std::string &filePath,
     const std::string &entryPoint,
     const std::string &correlationId);
+
+template <typename T>
+void setCorrlationId(T handle, VkDevice logicalDevice, VkObjectType type, const std::string &name)
+{
+    const VkDebugUtilsObjectNameInfoEXT objectNameInfo = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = type,
+        .objectHandle = reinterpret_cast<uint64_t>(handle),
+        .pObjectName = name.c_str(),
+    };
+
+    VK_CHECK(vkSetDebugUtilsObjectNameEXT(logicalDevice, &objectNameInfo));
+}

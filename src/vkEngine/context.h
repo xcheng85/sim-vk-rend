@@ -42,7 +42,6 @@
 #include <vk_mem_alloc.h>
 
 #include <misc.h>
-#include <camera.h>
 #include <glb.h>
 
 #if defined(__ANDROID__)
@@ -68,37 +67,51 @@ struct AndroidNativeWindowDeleter
 class Window;
 class VkContext
 {
+    class Impl;
+
 public:
     VkContext() = delete;
     VkContext(
         const Window &window,
         const std::vector<const char *> &instanceValidationLayers,
         const std::set<std::string> &instanceExtensions,
-        const std::vector<const char *> deviceExtensions,
-        const Camera &camera,
-        const std::string &model)
-        : _window(window),
-          _instanceValidationLayers(instanceValidationLayers),
-          _instanceExtensions(instanceExtensions),
-          _deviceExtensions(deviceExtensions),
-          _camera(camera),
-          _model(model)
-    {
-    }
+        const std::vector<const char *> deviceExtensions);
     VkContext(const VkContext &) = delete;
     VkContext &operator=(const VkContext &) = delete;
     VkContext(VkContext &&) noexcept = default;
     VkContext &operator=(VkContext &&) noexcept = default;
 
-    ~VkContext(){
-        
-    }
+    ~VkContext();
+
+    VkInstance getInstance() const;
+    VkDevice getLogicDevice() const;
+    VmaAllocator getVmaAllocator() const;
+    VkQueue getGraphicsQueue() const;
+    VkQueue getPresentationQueue() const;
+    VkPhysicalDevice getSelectedPhysicalDevice() const;
+    VkPhysicalDeviceProperties getSelectedPhysicalDeviceProp() const;
+    VkSurfaceKHR getSurfaceKHR() const;
+
+    uint32_t getGraphicsComputeQueueFamilyIndex() const;
+    uint32_t getPresentQueueFamilyIndex() const;
+
+    VkPhysicalDeviceVulkan12Features getVk12FeatureCaps() const;
+
+    // features chains
+    // now is to toggle features selectively
+    // enable features
+    static VkPhysicalDeviceFeatures sPhysicalDeviceFeatures; // cannot fly without sPhysicalDeviceFeatures2
+    static VkPhysicalDeviceFeatures2 sPhysicalDeviceFeatures2;
+
+    static VkPhysicalDeviceVulkan11Features sEnable11Features;
+    static VkPhysicalDeviceVulkan12Features sEnable12Features;
+    static VkPhysicalDeviceVulkan13Features sEnable13Features;
+    static VkPhysicalDeviceFragmentDensityMapFeaturesEXT sFragmentDensityMapFeatures;
+    // for ray-tracing
+    static VkPhysicalDeviceAccelerationStructureFeaturesKHR sAccelStructFeatures;
+    static VkPhysicalDeviceRayTracingPipelineFeaturesKHR sRayTracingPipelineFeatures;
+    static VkPhysicalDeviceRayQueryFeaturesKHR sRayQueryFeatures;
 
 private:
-    const Window &_window;
-    const Camera &_camera;
-    const std::vector<const char *> _instanceValidationLayers;
-    const std::set<std::string> &_instanceExtensions;
-    std::string _model;
-    const std::vector<const char *> _deviceExtensions;
+    std::unique_ptr<Impl> _pimpl;
 };

@@ -1,3 +1,5 @@
+#include <vector>
+#include <array>
 #include <context.h>
 #include <window.h>
 
@@ -38,6 +40,7 @@ public:
         createInstance();
         createSurface();
         selectPhysicalDevice();
+        cacheSupportedSurfaceFormats();
         queryPhysicalDeviceCaps();
         selectQueueFamily();
         selectFeatures();
@@ -54,12 +57,35 @@ public:
     ~Impl()
     {
         vkDeviceWaitIdle(_logicalDevice);
+
+        for (size_t i = 0; i < _swapChainImageViews.size(); i++)
+        {
+            vkDestroyImageView(_logicalDevice, _swapChainImageViews[i], nullptr);
+        }
+        // image is owned by swap chain
+        vkDestroySwapchainKHR(_logicalDevice, _swapChain, nullptr);
+
         // vmaDestroyAllocator(_vmaAllocator);
         vkDestroyDevice(_logicalDevice, nullptr);
         vkDestroyDebugUtilsMessengerEXT(_instance, _debugMessenger, nullptr);
         vkDestroySurfaceKHR(_instance, _surface, nullptr);
         vkDestroyInstance(_instance, nullptr);
     }
+
+    void createSwapChain();
+
+    void createSwapChainImageView();
+
+    VkRenderPass createSwapChainRenderPass();
+
+    VkFramebuffer createFramebuffer(
+        const std::string &name,
+        VkRenderPass renderPass,
+        const std::vector<VkImageView> &colors,
+        const VkImageView depth,
+        const VkImageView stencil,
+        uint32_t width,
+        uint32_t height);
 
     inline auto getLogicDevice() const
     {
@@ -115,6 +141,21 @@ public:
     inline auto getVk12FeatureCaps() const
     {
         return _vk12features;
+    }
+
+    inline auto getSwapChain() const
+    {
+        return _swapChain;
+    }
+
+    inline auto getSwapChainExtent() const
+    {
+        return _swapChainExtent;
+    }
+
+    inline const auto &getSwapChainImageViews() const
+    {
+        return _swapChainImageViews;
     }
 
 private:
@@ -502,6 +543,15 @@ private:
         }
     }
 
+    void cacheSupportedSurfaceFormats()
+    {
+        uint32_t formatCount{0};
+        vkGetPhysicalDeviceSurfaceFormatsKHR(_selectedPhysicalDevice, _surface, &formatCount, nullptr);
+        _surfaceFormats.resize(formatCount);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(_selectedPhysicalDevice, _surface, &formatCount,
+                                             _surfaceFormats.data());
+    }
+
     void selectQueueFamily()
     {
         // 12. Query the selected device to cache the device queue family
@@ -734,6 +784,15 @@ private:
     VkQueue _sparseQueues{VK_NULL_HANDLE};
 
     VmaAllocator _vmaAllocator{VK_NULL_HANDLE};
+
+    std::vector<VkSurfaceFormatKHR> _surfaceFormats;
+    VkFormat _swapChainFormat{VK_FORMAT_B8G8R8A8_UNORM};
+    VkColorSpaceKHR _colorspace{VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
+    VkExtent2D _swapChainExtent;
+    VkSwapchainKHR _swapChain{VK_NULL_HANDLE};
+    std::vector<VkImageView> _swapChainImageViews;
+    // fbo for swapchain
+    std::vector<VkFramebuffer> _swapChainFramebuffers;
 };
 
 void VkContext::Impl::selectFeatures()
@@ -957,6 +1016,264 @@ void VkContext::Impl::createVMA()
     ASSERT(_vmaAllocator, "Failed to create vma allocator");
 }
 
+void VkContext::Impl::createSwapChain()
+{
+    const auto selectedPhysicalDevice = _selectedPhysicalDevice;
+    const auto graphicsComputeQueueFamilyIndex = _graphicsComputeQueueFamilyIndex;
+    const auto presentQueueFamilyIndex = _presentQueueFamilyIndex;
+    const auto surfaceKHR = _surface;
+    const auto logicalDevice = _logicalDevice;
+
+    // for gamma correction, non-linear color space
+    ASSERT(_surfaceFormats.end() != std::find_if(_surfaceFormats.begin(), _surfaceFormats.end(),
+                                                 [&](const VkSurfaceFormatKHR &format)
+                                                 {
+                                                     return format.format == _swapChainFormat &&
+                                                            format.colorSpace == _colorspace;
+                                                 }),
+           "swapChainFormat is not supported");
+
+    VkSurfaceCapabilitiesKHR surfaceCapabilities;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(selectedPhysicalDevice, surfaceKHR,
+                                              &surfaceCapabilities);
+
+    const bool presentationQueueIsShared =
+        graphicsComputeQueueFamilyIndex == presentQueueFamilyIndex;
+
+    std::array<uint32_t, 2> familyIndices{graphicsComputeQueueFamilyIndex,
+                                          presentQueueFamilyIndex};
+    const uint32_t swapChainImageCount =
+        std::clamp(surfaceCapabilities.minImageCount + 1,
+                   surfaceCapabilities.minImageCount,
+                   surfaceCapabilities.maxImageCount);
+    VkSurfaceTransformFlagBitsKHR pretransformFlag;
+
+    uint32_t width = surfaceCapabilities.currentExtent.width;
+    uint32_t height = surfaceCapabilities.currentExtent.height;
+    // surfaceCapabilities.supportedCompositeAlpha
+    if (surfaceCapabilities.currentTransform & VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR ||
+        surfaceCapabilities.currentTransform & VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR)
+    {
+        // Swap to get identity width and height
+        surfaceCapabilities.currentExtent.height = width;
+        surfaceCapabilities.currentExtent.width = height;
+    }
+    _swapChainExtent = surfaceCapabilities.currentExtent;
+    pretransformFlag = surfaceCapabilities.currentTransform;
+
+    log(Level::Info, "Creating swapchain...");
+    log(Level::Info, "w: ", _swapChainExtent.width);
+    log(Level::Info, "h: ", _swapChainExtent.height);
+    log(Level::Info, "swapChainImageCount: ", swapChainImageCount);
+
+    VkSwapchainCreateInfoKHR swapchain = {};
+    swapchain.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    swapchain.surface = surfaceKHR;
+    swapchain.minImageCount = swapChainImageCount;
+    swapchain.imageFormat = _swapChainFormat;
+    swapchain.imageColorSpace = _colorspace;
+    swapchain.imageExtent = _swapChainExtent;
+    swapchain.clipped = VK_TRUE;
+    swapchain.imageArrayLayers = 1;
+    swapchain.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    // VK_SHARING_MODE_EXCLUSIVE,
+    // VK_SHARING_MODE_CONCURRENT: concurrent access to any range or image subresource from multiple queue families
+    swapchain.imageSharingMode = presentationQueueIsShared ? VK_SHARING_MODE_EXCLUSIVE
+                                                           : VK_SHARING_MODE_CONCURRENT;
+    swapchain.queueFamilyIndexCount = presentationQueueIsShared ? 0u : 2u;
+    swapchain.pQueueFamilyIndices = presentationQueueIsShared ? nullptr : familyIndices.data();
+    swapchain.preTransform = pretransformFlag;
+    // ignore alpha completely
+    // not supported: VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR for this default swapchain surface
+    swapchain.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    // VK_PRESENT_MODE_FIFO_KHR always supported
+    // VK_PRESENT_MODE_FIFO_KHR = Hard Vsync
+    // This is always supported on Android phones
+    swapchain.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+    swapchain.oldSwapchain = VK_NULL_HANDLE;
+    VK_CHECK(vkCreateSwapchainKHR(logicalDevice, &swapchain, nullptr, &_swapChain));
+    setCorrlationId(_swapChain, logicalDevice, VK_OBJECT_TYPE_SWAPCHAIN_KHR, "Swapchain");
+}
+
+void VkContext::Impl::createSwapChainImageView()
+{
+    uint32_t imageCount{0};
+    VK_CHECK(vkGetSwapchainImagesKHR(_logicalDevice, _swapChain, &imageCount, nullptr));
+    std::vector<VkImage> images(imageCount);
+    VK_CHECK(vkGetSwapchainImagesKHR(_logicalDevice, _swapChain, &imageCount, images.data()));
+    _swapChainImageViews.resize(imageCount);
+
+    VkImageViewCreateInfo imageView{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+    // VK_IMAGE_VIEW_TYPE_2D_ARRAY for image array
+    imageView.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    imageView.format = _swapChainFormat;
+    // no mipmap
+    imageView.subresourceRange.baseMipLevel = 0;
+    imageView.subresourceRange.levelCount = 1;
+    // no image array
+    imageView.subresourceRange.baseArrayLayer = 0;
+    imageView.subresourceRange.layerCount = 1;
+    imageView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    //    imageView.components.r = VK_COMPONENT_SWIZZLE_R;
+    //    imageView.components.g = VK_COMPONENT_SWIZZLE_G;
+    //    imageView.components.b = VK_COMPONENT_SWIZZLE_B;
+    //    imageView.components.a = VK_COMPONENT_SWIZZLE_A;
+    imageView.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+    imageView.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+    imageView.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+    imageView.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+    for (size_t i = 0; i < imageCount; ++i)
+    {
+        imageView.image = images[i];
+        VK_CHECK(vkCreateImageView(_logicalDevice, &imageView, nullptr, &_swapChainImageViews[i]));
+        setCorrlationId(_swapChainImageViews[i], _logicalDevice, VK_OBJECT_TYPE_IMAGE_VIEW,
+                        "Swap Chain Image view: " + std::to_string(i));
+    }
+}
+
+VkRenderPass VkContext::Impl::createSwapChainRenderPass()
+{
+    const auto logicalDevice = _logicalDevice;
+
+    VkAttachmentDescription colorAttachment{};
+    colorAttachment.format = _swapChainFormat;
+    // multi-samples here
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    // like tree traversal, enter/exit the node
+    // enter the renderpass: clear
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    // leave the renderpass: store
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    // swap chain is not used for stencil, don't care
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    // swap chain is for presentation
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    // VkAttachmentReference is for subpass, how subpass could refer to the color attachment
+    // here only 1 color attachement, index is 0;
+    VkAttachmentReference colorAttachmentRef{};
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass{};
+    // for graphics presentation
+    // no depth, stencil and multi-sampling
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorAttachmentRef;
+
+    VkSubpassDependency dependency{};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass = 0;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcAccessMask = 0;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+    // subpass dependencies
+    // VK_SUBPASS_EXTERNAL means anything outside of a given render pass scope.
+    // When used for srcSubpass it specifies anything that happened before the render pass.
+    // And when used for dstSubpass it specifies anything that happens after the render pass.
+    // It means that synchronization mechanisms need to include operations that happen before
+    // or after the render pass.
+    // It may be another render pass, but it also may be some other operations,
+    // not necessarily render pass-related.
+
+    // dstSubpass: 0
+    std::array<VkSubpassDependency, 2> dependencies;
+    dependencies[0] = {
+        .srcSubpass = VK_SUBPASS_EXTERNAL,
+        .dstSubpass = 0,
+        // specifies all operations performed by all commands
+        .srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+        // stage of the pipeline after blending
+        .dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                        VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT |
+                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        // dependencies: memory read may collide with renderpass write
+        .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
+        .dstAccessMask =
+            VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT,
+    };
+
+    dependencies[1] = {
+        .srcSubpass = 0,
+        .dstSubpass = VK_SUBPASS_EXTERNAL,
+        .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                        VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+        .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+                         VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                         VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                         VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT,
+    };
+
+    VkAttachmentDescription attachments[] = {colorAttachment};
+    VkRenderPassCreateInfo renderPassInfo = {VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
+    // here could set multi-view VkRenderPassMultiviewCreateInfo
+    renderPassInfo.pNext = nullptr;
+    renderPassInfo.attachmentCount = sizeof(attachments) / sizeof(attachments[0]);
+    renderPassInfo.pAttachments = attachments;
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+    renderPassInfo.dependencyCount = 2;
+    renderPassInfo.pDependencies = dependencies.data();
+
+    VkRenderPass swapChainRenderPass{VK_NULL_HANDLE};
+    VK_CHECK(vkCreateRenderPass(logicalDevice, &renderPassInfo, nullptr, &swapChainRenderPass));
+    setCorrlationId(swapChainRenderPass, logicalDevice, VK_OBJECT_TYPE_RENDER_PASS, "Render pass: SwapChain");
+    return swapChainRenderPass;
+}
+
+VkFramebuffer VkContext::Impl::createFramebuffer(
+    const std::string &name,
+    VkRenderPass renderPass,
+    const std::vector<VkImageView> &colors,
+    const VkImageView depth,
+    const VkImageView stencil,
+    uint32_t width,
+    uint32_t height)
+{
+    auto logicalDevice = _logicalDevice;
+
+    std::vector<VkImageView> imageViews;
+    for (const auto c : colors)
+    {
+        imageViews.push_back(c);
+    }
+    if (depth)
+    {
+        imageViews.push_back(depth);
+    }
+    if (stencil)
+    {
+        imageViews.push_back(stencil);
+    }
+
+    VkFramebufferCreateInfo framebufferInfo{};
+    framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    framebufferInfo.renderPass = renderPass;
+    framebufferInfo.attachmentCount = imageViews.size();
+    framebufferInfo.width = width;
+    framebufferInfo.height = height;
+    framebufferInfo.layers = 1;
+    framebufferInfo.pAttachments = imageViews.data();
+
+    VkFramebuffer fbo;
+    VK_CHECK(vkCreateFramebuffer(logicalDevice, &framebufferInfo, nullptr,
+                                 &fbo));
+    setCorrlationId(fbo, _logicalDevice, VK_OBJECT_TYPE_FRAMEBUFFER, name);
+    return fbo;
+}
+
 VkPhysicalDeviceFeatures VkContext::sPhysicalDeviceFeatures = {
 
 };
@@ -1009,6 +1326,29 @@ VkContext::VkContext(const Window &window,
 
 VkContext::~VkContext()
 {
+}
+
+void VkContext::createSwapChain()
+{
+    _pimpl->createSwapChain();
+    _pimpl->createSwapChainImageView();
+}
+
+VkRenderPass VkContext::createSwapChainRenderPass()
+{
+    return _pimpl->createSwapChainRenderPass();
+}
+
+VkFramebuffer VkContext::createFramebuffer(
+    const std::string &name,
+    VkRenderPass renderPass,
+    const std::vector<VkImageView> &colors,
+    const VkImageView depth,
+    const VkImageView stencil,
+    uint32_t width,
+    uint32_t height)
+{
+    return _pimpl->createFramebuffer(name, renderPass, colors, depth, stencil, width, height);
 }
 
 VkInstance VkContext::getInstance() const
@@ -1064,4 +1404,19 @@ uint32_t VkContext::getPresentQueueFamilyIndex() const
 VkPhysicalDeviceVulkan12Features VkContext::getVk12FeatureCaps() const
 {
     return _pimpl->getVk12FeatureCaps();
+}
+
+VkSwapchainKHR VkContext::getSwapChain() const
+{
+    return _pimpl->getSwapChain();
+}
+
+VkExtent2D VkContext::getSwapChainExtent() const
+{
+    return _pimpl->getSwapChainExtent();
+}
+
+const std::vector<VkImageView> &VkContext::getSwapChainImageViews() const
+{
+    return _pimpl->getSwapChainImageViews();
 }

@@ -40,9 +40,7 @@
 // Include "vk_mem_alloc.h" file in each CPP file where you want to use the library. This includes declarations of all members of the library.
 // In exactly one CPP file define following macro before this include. It enables also internal definitions.
 #include <vk_mem_alloc.h>
-
 #include <misc.h>
-#include <glb.h>
 
 #if defined(__ANDROID__)
 // functor for custom deleter for unique_ptr
@@ -83,19 +81,40 @@ public:
 
     ~VkContext();
 
+    void createSwapChain();
+
+    // generic to swapchain image and non-swapchain images
+    VkRenderPass createSwapChainRenderPass();
+    // renderPass, imagecount
+    VkFramebuffer createFramebuffer(
+        const std::string &name,
+        VkRenderPass renderPass,
+        const std::vector<VkImageView> &colors,
+        const VkImageView depth,
+        const VkImageView stencil,
+        uint32_t width,
+        uint32_t height);
+
     VkInstance getInstance() const;
     VkDevice getLogicDevice() const;
     VmaAllocator getVmaAllocator() const;
     VkQueue getGraphicsQueue() const;
     VkQueue getPresentationQueue() const;
+
     VkPhysicalDevice getSelectedPhysicalDevice() const;
     VkPhysicalDeviceProperties getSelectedPhysicalDeviceProp() const;
+
     VkSurfaceKHR getSurfaceKHR() const;
 
     uint32_t getGraphicsComputeQueueFamilyIndex() const;
     uint32_t getPresentQueueFamilyIndex() const;
 
     VkPhysicalDeviceVulkan12Features getVk12FeatureCaps() const;
+
+    VkSwapchainKHR getSwapChain() const;
+    VkExtent2D getSwapChainExtent() const;
+
+    const std::vector<VkImageView> &getSwapChainImageViews() const;
 
     // features chains
     // now is to toggle features selectively

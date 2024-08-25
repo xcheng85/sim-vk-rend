@@ -23,8 +23,8 @@ void VkApplication::init()
     createUniformBuffers();
 
     // application logic
-    createCommandPool();
-    createCommandBuffer();
+    _cmdBuffersForRendering = _ctx.createGraphicsCommandBuffers("rendering", MAX_FRAMES_IN_FLIGHT, MAX_FRAMES_IN_FLIGHT);
+    _cmdBuffersForIO = _ctx.createGraphicsCommandBuffers("io", 1, 1);
 
     // vao, textures and glb all depends on host-device io
     // one-time commandBuffer _uploadCmd
@@ -62,10 +62,40 @@ void VkApplication::teardown()
     vkDeviceWaitIdle(logicalDevice);
     deleteSwapChain();
 
-    // delete io fence
-    vkDestroyFence(logicalDevice, _ioFence, nullptr);
-    // free cmdBuffer for io purpose
-    vkFreeCommandBuffers(logicalDevice, _commandPool, 1, &_uploadCmd);
+    // // delete io related commandbuffers and fence
+    // vkDestroyFence(logicalDevice, _ioFence, nullptr);
+    // // free cmdBuffer for io purpose
+    // vkFreeCommandBuffers(logicalDevice, _commandPool, 1, &_uploadCmd);
+    {
+        VkCommandPool p{VK_NULL_HANDLE};
+        for (const auto &t : _cmdBuffersForIO)
+        {
+            const auto &cmdPool = std::get<0>(t);
+            const auto &cmdBuffer = std::get<1>(t);
+            const auto &cmdFence = std::get<2>(t);
+            p = cmdPool;
+
+            vkDestroyFence(logicalDevice, cmdFence, nullptr);
+            vkFreeCommandBuffers(logicalDevice, cmdPool, 1, &cmdBuffer);
+        }
+        vkDestroyCommandPool(logicalDevice, p, nullptr);
+    }
+
+    // inflight rendering command buffers
+    {
+        VkCommandPool p{VK_NULL_HANDLE};
+        for (const auto &t : _cmdBuffersForRendering)
+        {
+            const auto &cmdPool = std::get<0>(t);
+            const auto &cmdBuffer = std::get<1>(t);
+            const auto &cmdFence = std::get<2>(t);
+            p = cmdPool;
+
+            vkDestroyFence(logicalDevice, cmdFence, nullptr);
+            vkFreeCommandBuffers(logicalDevice, cmdPool, 1, &cmdBuffer);
+        }
+        vkDestroyCommandPool(logicalDevice, p, nullptr);
+    }
 
     // shader module
     vkDestroyShaderModule(logicalDevice, _vsShaderModule, nullptr);
@@ -106,10 +136,10 @@ void VkApplication::teardown()
         // sync
         vkDestroySemaphore(logicalDevice, _imageCanAcquireSemaphores[i], nullptr);
         vkDestroySemaphore(logicalDevice, _imageRendereredSemaphores[i], nullptr);
-        vkDestroyFence(logicalDevice, _inFlightFences[i], nullptr);
+        // vkDestroyFence(logicalDevice, _inFlightFences[i], nullptr);
     }
 
-    vkDestroyCommandPool(logicalDevice, _commandPool, nullptr);
+    // vkDestroyCommandPool(logicalDevice, _commandPool, nullptr);
     vkDestroyPipeline(logicalDevice, _graphicsPipeline, nullptr);
     vkDestroyPipelineLayout(logicalDevice, _pipelineLayout, nullptr);
     vkDestroyRenderPass(logicalDevice, _swapChainRenderPass, nullptr);
@@ -131,9 +161,15 @@ void VkApplication::renderPerFrame()
     auto presentationQueue = _ctx.getPresentationQueue();
     auto swapChain = _ctx.getSwapChain();
 
+    ASSERT(_currentFrameId >= 0 && _currentFrameId < _cmdBuffersForRendering.size(),
+           "_currentFrameId must be in the valid range of cmdBuffers");
+
+    const auto cmdToRecord = std::get<1>(_cmdBuffersForRendering[_currentFrameId]);
+    const auto fenceToWait = std::get<2>(_cmdBuffersForRendering[_currentFrameId]);
+
     // no timeout set
-    VK_CHECK(vkWaitForFences(logicalDevice, 1, &_inFlightFences[_currentFrameId], VK_TRUE,
-                             UINT64_MAX));
+    VK_CHECK(vkWaitForFences(logicalDevice, 1, &fenceToWait, VK_TRUE, UINT64_MAX));
+
     // VK_CHECK(vkResetFences(device_, 1, &acquireFence_));
     uint32_t swapChainImageIndex;
     VkResult result = vkAcquireNextImageKHR(
@@ -149,11 +185,10 @@ void VkApplication::renderPerFrame()
     updateUniformBuffer(_currentFrameId);
 
     // vkWaitForFences and reset pattern
-    VK_CHECK(vkResetFences(logicalDevice, 1, &_inFlightFences[_currentFrameId]));
+    VK_CHECK(vkResetFences(logicalDevice, 1, &fenceToWait));
     // vkWaitForFences ensure the previous command is submitted from the host, now it can be modified.
-    VK_CHECK(vkResetCommandBuffer(_commandBuffers[_currentFrameId], 0));
-
-    recordCommandBuffer(_commandBuffers[_currentFrameId], swapChainImageIndex);
+    VK_CHECK(vkResetCommandBuffer(cmdToRecord, 0));
+    recordCommandBuffer(cmdToRecord, swapChainImageIndex);
     // submit command
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -168,13 +203,13 @@ void VkApplication::renderPerFrame()
     submitInfo.pWaitSemaphores = waitSemaphores;
     submitInfo.pWaitDstStageMask = waitStages;
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &_commandBuffers[_currentFrameId];
+    submitInfo.pCommandBuffers = &cmdToRecord;
     // signal semaphore
     VkSemaphore signalRenderedSemaphores[] = {_imageRendereredSemaphores[_currentFrameId]};
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalRenderedSemaphores;
     // signal fence
-    VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &submitInfo, _inFlightFences[_currentFrameId]));
+    VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &submitInfo, fenceToWait));
 
     // present after rendering is done
     VkPresentInfoKHR presentInfo{};
@@ -967,7 +1002,7 @@ void VkApplication::createSwapChainFramebuffers()
         _swapChainFramebuffers.push_back(_ctx.createFramebuffer(
             "swapchainFBO" + i,
             _swapChainRenderPass,
-            { swapChainImageViews[i] },
+            {swapChainImageViews[i]},
             VK_NULL_HANDLE,
             VK_NULL_HANDLE,
             swapChainExtent.width,
@@ -991,34 +1026,6 @@ void VkApplication::createSwapChainFramebuffers()
     //     VK_CHECK(vkCreateFramebuffer(logicalDevice, &framebufferInfo, nullptr,
     //                                  &_swapChainFramebuffers[i]));
     // }
-}
-
-void VkApplication::createCommandPool()
-{
-    auto logicalDevice = _ctx.getLogicDevice();
-    auto graphicsComputeQueueFamilyIndex = _ctx.getGraphicsComputeQueueFamilyIndex();
-
-    VkCommandPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    // VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
-    // since we want to record a command buffer every frame, so we want to be able to
-    // reset and record over it
-    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    poolInfo.queueFamilyIndex = graphicsComputeQueueFamilyIndex;
-    VK_CHECK(vkCreateCommandPool(logicalDevice, &poolInfo, nullptr, &_commandPool));
-}
-
-void VkApplication::createCommandBuffer()
-{
-    auto logicalDevice = _ctx.getLogicDevice();
-
-    _commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = _commandPool;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = _commandBuffers.size();
-    VK_CHECK(vkAllocateCommandBuffers(logicalDevice, &allocInfo, _commandBuffers.data()));
 }
 
 void VkApplication::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapChainImageIndex)
@@ -1091,90 +1098,33 @@ void VkApplication::createPerFrameSyncObjects()
 
     _imageCanAcquireSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     _imageRendereredSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-    _inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
 
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-    VkFenceCreateInfo fenceInfo{};
-    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
         VK_CHECK(vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr,
                                    &_imageCanAcquireSemaphores[i]));
         VK_CHECK(vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr,
                                    &_imageRendereredSemaphores[i]));
-        VK_CHECK(vkCreateFence(logicalDevice, &fenceInfo, nullptr, &_inFlightFences[i]));
     }
 }
-
-// bool VkApplication::checkValidationLayerSupport()
-// {
-//     uint32_t instanceLayerCount{0};
-//     VK_CHECK(vkEnumerateInstanceLayerProperties(&instanceLayerCount, nullptr));
-
-//     std::vector<VkLayerProperties> availableLayers(instanceLayerCount);
-//     VK_CHECK(vkEnumerateInstanceLayerProperties(&instanceLayerCount, availableLayers.data()));
-
-//     std::vector<std::string> layerNames;
-//     std::transform(
-//         availableLayers.begin(), availableLayers.end(), std::back_inserter(layerNames),
-//         [](const VkLayerProperties &properties)
-//         { return properties.layerName; });
-
-//     log(Level::Info, "Found ", instanceLayerCount, " available Instance layer(s)");
-//     for (const auto &layer : layerNames)
-//     {
-//         log(Level::Info, layer);
-//     }
-
-//     for (const char *layerName : _instanceValidationLayers)
-//     {
-//         bool layerFound = false;
-//         for (const auto &layerProperties : availableLayers)
-//         {
-//             if (strcmp(layerName, layerProperties.layerName) == 0)
-//             {
-//                 layerFound = true;
-//                 break;
-//             }
-//         }
-
-//         if (!layerFound)
-//         {
-//             return false;
-//         }
-//     }
-//     return true;
-// }
 
 // create shared _uploadCmd and begin
 void VkApplication::preHostDeviceIO()
 {
-    auto logicalDevice = _ctx.getLogicDevice();
+    ASSERT(_cmdBuffersForIO.size() == 1, "Only use 1 cmdBuffer for IO")
 
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = _commandPool;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = 1;
-    VK_CHECK(vkAllocateCommandBuffers(logicalDevice, &allocInfo, &_uploadCmd));
+    auto logicalDevice = _ctx.getLogicDevice();
+    const auto uploadCmdBuffer = std::get<1>(_cmdBuffersForIO[0]);
 
     VkCommandBufferBeginInfo cmdBufferBeginInfo{};
     cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     //  specifies that each recording of the command buffer will only be submitted once,
     //  and the command buffer will be reset and recorded again between each submission.
     cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    VK_CHECK(vkBeginCommandBuffer(_uploadCmd, &cmdBufferBeginInfo));
-
-    VkFenceCreateInfo fenceInfo = {
-        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = 0, // VK_FENCE_CREATE_SIGNALED_BIT: signaled state
-    };
-    VkFence fence;
-    VK_CHECK(vkCreateFence(logicalDevice, &fenceInfo, nullptr, &_ioFence));
+    VK_CHECK(vkBeginCommandBuffer(uploadCmdBuffer, &cmdBufferBeginInfo));
 }
 
 // end recording of buffer.
@@ -1184,7 +1134,10 @@ void VkApplication::postHostDeviceIO()
     auto logicalDevice = _ctx.getLogicDevice();
     auto graphicsQueue = _ctx.getGraphicsQueue();
 
-    VK_CHECK(vkEndCommandBuffer(_uploadCmd));
+    ASSERT(_cmdBuffersForIO.size() == 1, "Only use 1 cmdBuffer for IO")
+    const auto uploadCmdBuffer = std::get<1>(_cmdBuffersForIO[0]);
+    const auto uploadCmdBufferFence = std::get<2>(_cmdBuffersForIO[0]);
+    VK_CHECK(vkEndCommandBuffer(uploadCmdBuffer));
 
     const VkPipelineStageFlags flags = VK_PIPELINE_STAGE_TRANSFER_BIT;
 
@@ -1195,12 +1148,12 @@ void VkApplication::postHostDeviceIO()
     submitInfo.pWaitDstStageMask = &flags;
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &_uploadCmd;
+    submitInfo.pCommandBuffers = &uploadCmdBuffer;
     submitInfo.signalSemaphoreCount = 0;
     submitInfo.pSignalSemaphores = VK_NULL_HANDLE;
-    VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &submitInfo, _ioFence));
+    VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &submitInfo, uploadCmdBufferFence));
 
-    const auto result = vkWaitForFences(logicalDevice, 1, &_ioFence, VK_TRUE,
+    const auto result = vkWaitForFences(logicalDevice, 1, &uploadCmdBufferFence, VK_TRUE,
                                         DEFAULT_FENCE_TIMEOUT);
     if (result == VK_TIMEOUT)
     {
@@ -1736,6 +1689,9 @@ void VkApplication::loadGLB()
     const auto selectedPhysicalDevice = _ctx.getSelectedPhysicalDevice();
     const auto selectedPhysicalDeviceProp = _ctx.getSelectedPhysicalDeviceProp();
 
+    const auto uploadCmdBuffer = std::get<1>(_cmdBuffersForIO[0]);
+    const auto uploadCmdBufferFence = std::get<2>(_cmdBuffersForIO[0]);
+
     std::string filename = getAssetPath() + "\\" + _model;
 
     std::vector<char> glbContent;
@@ -1862,7 +1818,7 @@ void VkApplication::loadGLB()
             VkBufferCopy region{.srcOffset = 0,
                                 .dstOffset = deviceCompositeVertexBufferOffsetInBytes,
                                 .size = vertexByteSizeMesh};
-            vkCmdCopyBuffer(_uploadCmd, stagingVerticeBuffer, _compositeVB, 1, &region);
+            vkCmdCopyBuffer(uploadCmdBuffer, stagingVerticeBuffer, _compositeVB, 1, &region);
 
             deviceCompositeVertexBufferOffsetInBytes += vertexByteSizeMesh;
 
@@ -1899,7 +1855,7 @@ void VkApplication::loadGLB()
             VkBufferCopy regionForIB{.srcOffset = 0,
                                      .dstOffset = deviceCompositeIndicesBufferOffsetInBytes,
                                      .size = indicesByteSizeMesh};
-            vkCmdCopyBuffer(_uploadCmd, stagingIndiceBuffer, _compositeIB, 1, &regionForIB);
+            vkCmdCopyBuffer(uploadCmdBuffer, stagingIndiceBuffer, _compositeIB, 1, &regionForIB);
 
             deviceCompositeIndicesBufferOffsetInBytes += indicesByteSizeMesh;
             // reserve still needs push_back/emplace_back
@@ -2026,7 +1982,7 @@ void VkApplication::loadGLB()
                 imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
                 vkCmdPipelineBarrier(
-                    _uploadCmd,
+                    uploadCmdBuffer,
                     VK_PIPELINE_STAGE_HOST_BIT,
                     VK_PIPELINE_STAGE_TRANSFER_BIT,
                     0,
@@ -2050,7 +2006,7 @@ void VkApplication::loadGLB()
                 bufferCopyRegion.imageExtent.height = texture->height;
                 bufferCopyRegion.imageExtent.depth = 1;
                 vkCmdCopyBufferToImage(
-                    _uploadCmd,
+                    uploadCmdBuffer,
                     glbImageStagingBuffer,
                     glbImage,
                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -2092,7 +2048,7 @@ void VkApplication::loadGLB()
                         // Prepare current mip level as image blit source for next level
                         imageMemoryBarrier.subresourceRange.baseMipLevel = i - 1;
                         vkCmdPipelineBarrier(
-                            _uploadCmd,
+                            uploadCmdBuffer,
                             VK_PIPELINE_STAGE_TRANSFER_BIT,
                             VK_PIPELINE_STAGE_TRANSFER_BIT,
                             0,
@@ -2126,7 +2082,7 @@ void VkApplication::loadGLB()
                         imageBlit.dstOffsets[1].y = newH;
                         imageBlit.dstOffsets[1].z = 1;
 
-                        vkCmdBlitImage(_uploadCmd,
+                        vkCmdBlitImage(uploadCmdBuffer,
                                        glbImage,
                                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                                        glbImage,
@@ -2157,7 +2113,7 @@ void VkApplication::loadGLB()
                             },
 
                     };
-                    vkCmdPipelineBarrier(_uploadCmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    vkCmdPipelineBarrier(uploadCmdBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
                                          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0,
                                          nullptr,
                                          1, &convertToShaderReadBarrier);
@@ -2264,7 +2220,7 @@ void VkApplication::loadGLB()
             VkBufferCopy regionForMatB{.srcOffset = 0,
                                        .dstOffset = 0,
                                        .size = materialByteSize};
-            vkCmdCopyBuffer(_uploadCmd, _stagingMatBuffer, _compositeMatB, 1, &regionForMatB);
+            vkCmdCopyBuffer(uploadCmdBuffer, _stagingMatBuffer, _compositeMatB, 1, &regionForMatB);
         }
 
         // packing for indirectDrawBuffer
@@ -2333,7 +2289,7 @@ void VkApplication::loadGLB()
             VkBufferCopy region{.srcOffset = 0,
                                 .dstOffset = 0,
                                 .size = indirectDrawBufferByteSize};
-            vkCmdCopyBuffer(_uploadCmd, _stagingIndirectDrawBuffer, _indirectDrawB, 1, &region);
+            vkCmdCopyBuffer(uploadCmdBuffer, _stagingIndirectDrawBuffer, _indirectDrawB, 1, &region);
         }
     }
 }

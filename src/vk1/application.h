@@ -194,15 +194,13 @@ private:
     VkPipelineLayout _pipelineLayout;
     VkPipeline _graphicsPipeline;
 
-    // cmd
-    VkCommandPool _commandPool;
-    std::vector<VkCommandBuffer> _commandBuffers;
+    // cmdpool and cmdbuffers
+    std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> _cmdBuffersForRendering;
+    std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> _cmdBuffersForIO;
 
     // GPU-CPU SYNC
     std::vector<VkSemaphore> _imageCanAcquireSemaphores;
     std::vector<VkSemaphore> _imageRendereredSemaphores;
-    // host
-    std::vector<VkFence> _inFlightFences;
     // 0, 1, 2, 0, 1, 2, ...
     uint32_t _currentFrameId = 0;
 
@@ -212,10 +210,6 @@ private:
     VkBuffer _deviceVb{VK_NULL_HANDLE}, _deviceIb{VK_NULL_HANDLE};
     // need to destroy staging buffer when io is completed
     VkBuffer _stagingVb{VK_NULL_HANDLE}, _stagingIb{VK_NULL_HANDLE};
-
-    // host-device io (during initialization)
-    VkCommandBuffer _uploadCmd;
-    VkFence _ioFence;
 
     // texture
     VkImageView _imageView{VK_NULL_HANDLE};

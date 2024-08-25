@@ -24,6 +24,7 @@
 #include <iostream>
 #include <format>
 #include <vector>
+#include <utility>
 #include <algorithm>
 #include <iterator>
 #include <numeric>
@@ -94,6 +95,16 @@ public:
         const VkImageView stencil,
         uint32_t width,
         uint32_t height);
+
+    std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> createGraphicsCommandBuffers(
+        const std::string &name,
+        uint32_t count,
+        uint32_t inflightCount);
+
+    std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> createTransferCommandBuffers(
+        const std::string &name,
+        uint32_t count,
+        uint32_t inflightCount);
 
     VkInstance getInstance() const;
     VkDevice getLogicDevice() const;

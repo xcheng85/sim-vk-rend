@@ -87,6 +87,16 @@ public:
         uint32_t width,
         uint32_t height);
 
+    std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> createGraphicsCommandBuffers(
+        const std::string &name,
+        uint32_t count,
+        uint32_t inflightCount);
+
+    std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> createTransferCommandBuffers(
+        const std::string &name,
+        uint32_t count,
+        uint32_t inflightCount);
+
     inline auto getLogicDevice() const
     {
         return _logicalDevice;
@@ -620,6 +630,13 @@ private:
     void cacheCommandQueue();
 
     void createVMA();
+
+    std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> createCommandBuffers(
+        const std::string &name,
+        uint32_t count,
+        uint32_t inflightCount,
+        uint32_t queueFamilyIndex,
+        VkQueue queue);
 
     bool checkValidationLayerSupport() const
     {
@@ -1274,6 +1291,76 @@ VkFramebuffer VkContext::Impl::createFramebuffer(
     return fbo;
 }
 
+std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl::createGraphicsCommandBuffers(
+    const std::string &name,
+    uint32_t count,
+    uint32_t inflightCount)
+{
+    return this->createCommandBuffers(name, count, inflightCount, 
+    _graphicsComputeQueueFamilyIndex, 
+    _graphicsQueue);
+}
+
+std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl::createTransferCommandBuffers(
+    const std::string &name,
+    uint32_t count,
+    uint32_t inflightCount)
+{
+    return this->createCommandBuffers(name, count, inflightCount, 
+    _transferQueueFamilyIndex, 
+    _transferQueue);
+}
+
+std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl::createCommandBuffers(
+    const std::string &name,
+    uint32_t count,
+    uint32_t inflightCount,
+    uint32_t queueFamilyIndex,
+    VkQueue queue)
+{
+    ASSERT(inflightCount == 0 || count == inflightCount,
+           "inflightCount must either be 0 or equal commandbuffer count");
+
+    std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> res;
+
+    std::vector<VkCommandBuffer> commandBuffers;
+    std::vector<VkFence> inFlightFences;
+
+    VkCommandPool commandPool{VK_NULL_HANDLE};
+    VkCommandPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    // VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
+    // since we want to record a command buffer every frame, so we want to be able to
+    // reset and record over it
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    poolInfo.queueFamilyIndex = queueFamilyIndex;
+    VK_CHECK(vkCreateCommandPool(_logicalDevice, &poolInfo, nullptr, &commandPool));
+
+    commandBuffers.resize(count);
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = commandPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = commandBuffers.size();
+    VK_CHECK(vkAllocateCommandBuffers(_logicalDevice, &allocInfo, commandBuffers.data()));
+
+    inFlightFences.resize(count, VK_NULL_HANDLE);
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    for (size_t i = 0; i < inflightCount; ++i)
+    {
+        VK_CHECK(vkCreateFence(_logicalDevice, &fenceInfo, nullptr, &inFlightFences[i]));
+    }
+
+    res.reserve(count);
+    for (size_t i = 0; i < count; ++i)
+    {
+        res.emplace_back(make_tuple(commandPool, commandBuffers[i], inFlightFences[i]));
+    }
+    return res;
+}
+
 VkPhysicalDeviceFeatures VkContext::sPhysicalDeviceFeatures = {
 
 };
@@ -1349,6 +1436,22 @@ VkFramebuffer VkContext::createFramebuffer(
     uint32_t height)
 {
     return _pimpl->createFramebuffer(name, renderPass, colors, depth, stencil, width, height);
+}
+
+std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::createGraphicsCommandBuffers(
+    const std::string &name,
+    uint32_t count,
+    uint32_t inflightCount)
+{
+    return _pimpl->createGraphicsCommandBuffers(name, count, inflightCount);
+}
+
+std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::createTransferCommandBuffers(
+    const std::string &name,
+    uint32_t count,
+    uint32_t inflightCount)
+{
+    return _pimpl->createTransferCommandBuffers(name, count, inflightCount);
 }
 
 VkInstance VkContext::getInstance() const

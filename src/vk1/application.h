@@ -186,9 +186,13 @@ private:
 
     // resource
     // to implement in entity Buffer.
-    std::vector<VkBuffer> _uniformBuffers;
-    std::vector<VmaAllocation> _vmaAllocations;
-    std::vector<VmaAllocationInfo> _vmaAllocationInfos;
+    // std::vector<VkBuffer> _uniformBuffers;
+    // std::vector<VmaAllocation> _vmaAllocations;
+    // std::vector<VmaAllocationInfo> _vmaAllocationInfos;
+
+    std::vector<std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo>> _uniformBuffers;
+
+
     // graphics pipeline
     // for multiple sets + bindings
     VkPipelineLayout _pipelineLayout;

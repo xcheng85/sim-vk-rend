@@ -99,12 +99,19 @@ public:
     std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> createGraphicsCommandBuffers(
         const std::string &name,
         uint32_t count,
-        uint32_t inflightCount);
+        uint32_t inflightCount,
+        VkFenceCreateFlags flags);
 
     std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> createTransferCommandBuffers(
         const std::string &name,
         uint32_t count,
-        uint32_t inflightCount);
+        uint32_t inflightCount,
+        VkFenceCreateFlags flags);
+
+    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> createPersistentBuffer(
+        const std::string &name,
+        VkDeviceSize bufferSizeInBytes,
+        VkBufferUsageFlags bufferUsageFlag);
 
     VkInstance getInstance() const;
     VkDevice getLogicDevice() const;

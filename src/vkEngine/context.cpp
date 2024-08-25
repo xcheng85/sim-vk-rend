@@ -90,12 +90,19 @@ public:
     std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> createGraphicsCommandBuffers(
         const std::string &name,
         uint32_t count,
-        uint32_t inflightCount);
+        uint32_t inflightCount,
+        VkFenceCreateFlags flags);
 
     std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> createTransferCommandBuffers(
         const std::string &name,
         uint32_t count,
-        uint32_t inflightCount);
+        uint32_t inflightCount,
+        VkFenceCreateFlags flags);
+
+    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> createPersistentBuffer(
+        const std::string &name,
+        VkDeviceSize bufferSizeInBytes,
+        VkBufferUsageFlags bufferUsageFlag);
 
     inline auto getLogicDevice() const
     {
@@ -635,8 +642,19 @@ private:
         const std::string &name,
         uint32_t count,
         uint32_t inflightCount,
+        VkFenceCreateFlags flags,
         uint32_t queueFamilyIndex,
         VkQueue queue);
+
+    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> createBuffer(
+        const std::string &name,
+        VkDeviceSize bufferSizeInBytes,
+        VkBufferUsageFlags bufferUsageFlag,
+        VkSharingMode bufferSharingMode,
+        VmaAllocationCreateFlags memoryAllocationFlag,
+        VkMemoryPropertyFlags requiredMemoryProperties,
+        VkMemoryPropertyFlags preferredMemoryProperties,
+        VmaMemoryUsage memoryUsage);
 
     bool checkValidationLayerSupport() const
     {
@@ -1294,27 +1312,30 @@ VkFramebuffer VkContext::Impl::createFramebuffer(
 std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl::createGraphicsCommandBuffers(
     const std::string &name,
     uint32_t count,
-    uint32_t inflightCount)
+    uint32_t inflightCount,
+    VkFenceCreateFlags flags)
 {
-    return this->createCommandBuffers(name, count, inflightCount, 
-    _graphicsComputeQueueFamilyIndex, 
-    _graphicsQueue);
+    return this->createCommandBuffers(name, count, inflightCount, flags,
+                                      _graphicsComputeQueueFamilyIndex,
+                                      _graphicsQueue);
 }
 
 std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl::createTransferCommandBuffers(
     const std::string &name,
     uint32_t count,
-    uint32_t inflightCount)
+    uint32_t inflightCount,
+    VkFenceCreateFlags flags)
 {
-    return this->createCommandBuffers(name, count, inflightCount, 
-    _transferQueueFamilyIndex, 
-    _transferQueue);
+    return this->createCommandBuffers(name, count, inflightCount,flags,
+                                      _transferQueueFamilyIndex,
+                                      _transferQueue);
 }
 
 std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl::createCommandBuffers(
     const std::string &name,
     uint32_t count,
     uint32_t inflightCount,
+    VkFenceCreateFlags flags,
     uint32_t queueFamilyIndex,
     VkQueue queue)
 {
@@ -1347,7 +1368,8 @@ std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl
     inFlightFences.resize(count, VK_NULL_HANDLE);
     VkFenceCreateInfo fenceInfo{};
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    fenceInfo.flags = flags;
+    
     for (size_t i = 0; i < inflightCount; ++i)
     {
         VK_CHECK(vkCreateFence(_logicalDevice, &fenceInfo, nullptr, &inFlightFences[i]));
@@ -1359,6 +1381,61 @@ std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl
         res.emplace_back(make_tuple(commandPool, commandBuffers[i], inFlightFences[i]));
     }
     return res;
+}
+
+std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::Impl::createBuffer(
+    const std::string &name,
+    VkDeviceSize bufferSizeInBytes,
+    VkBufferUsageFlags bufferUsageFlag,
+    VkSharingMode bufferSharingMode,
+    VmaAllocationCreateFlags memoryAllocationFlag,
+    VkMemoryPropertyFlags requiredMemoryProperties,
+    VkMemoryPropertyFlags preferredMemoryProperties,
+    VmaMemoryUsage memoryUsage)
+{
+    VkBuffer buffer{VK_NULL_HANDLE};
+    VmaAllocation allocation{VK_NULL_HANDLE};
+    VmaAllocationInfo allocationInfo;
+    VkBufferCreateInfo bufferCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = bufferSizeInBytes,
+        .usage = bufferUsageFlag,
+        .sharingMode = bufferSharingMode,
+    };
+
+    const VmaAllocationCreateInfo bufferMemoryAllocationCreateInfo = {
+        .flags = memoryAllocationFlag,
+        .usage = memoryUsage,
+        .requiredFlags = requiredMemoryProperties,
+        .preferredFlags = preferredMemoryProperties,
+    };
+
+    VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
+                             &bufferMemoryAllocationCreateInfo,
+                             &buffer,
+                             &allocation, nullptr));
+    vmaGetAllocationInfo(_vmaAllocator, allocation, &allocationInfo);
+    return make_tuple(buffer, allocation, allocationInfo);
+}
+
+std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::Impl::createPersistentBuffer(
+    const std::string &name,
+    VkDeviceSize bufferSizeInBytes,
+    VkBufferUsageFlags bufferUsageFlag)
+{
+    return createBuffer(
+        name,
+        bufferSizeInBytes,
+        bufferUsageFlag,
+        VK_SHARING_MODE_EXCLUSIVE,
+        0,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+            VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+            VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+        VMA_MEMORY_USAGE_CPU_TO_GPU);
 }
 
 VkPhysicalDeviceFeatures VkContext::sPhysicalDeviceFeatures = {
@@ -1441,17 +1518,27 @@ VkFramebuffer VkContext::createFramebuffer(
 std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::createGraphicsCommandBuffers(
     const std::string &name,
     uint32_t count,
-    uint32_t inflightCount)
+    uint32_t inflightCount,
+    VkFenceCreateFlags flags)
 {
-    return _pimpl->createGraphicsCommandBuffers(name, count, inflightCount);
+    return _pimpl->createGraphicsCommandBuffers(name, count, inflightCount, flags);
 }
 
 std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::createTransferCommandBuffers(
     const std::string &name,
     uint32_t count,
-    uint32_t inflightCount)
+    uint32_t inflightCount,
+    VkFenceCreateFlags flags)
 {
-    return _pimpl->createTransferCommandBuffers(name, count, inflightCount);
+    return _pimpl->createTransferCommandBuffers(name, count, inflightCount, flags);
+}
+
+std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::createPersistentBuffer(
+    const std::string &name,
+    VkDeviceSize bufferSizeInBytes,
+    VkBufferUsageFlags bufferUsageFlag)
+{
+    return _pimpl->createPersistentBuffer(name, bufferSizeInBytes, bufferUsageFlag);
 }
 
 VkInstance VkContext::getInstance() const

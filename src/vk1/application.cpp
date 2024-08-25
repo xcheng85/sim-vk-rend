@@ -23,8 +23,9 @@ void VkApplication::init()
     createUniformBuffers();
 
     // application logic
-    _cmdBuffersForRendering = _ctx.createGraphicsCommandBuffers("rendering", MAX_FRAMES_IN_FLIGHT, MAX_FRAMES_IN_FLIGHT);
-    _cmdBuffersForIO = _ctx.createGraphicsCommandBuffers("io", 1, 1);
+    _cmdBuffersForRendering = _ctx.createGraphicsCommandBuffers("rendering", MAX_FRAMES_IN_FLIGHT, 
+    MAX_FRAMES_IN_FLIGHT, VK_FENCE_CREATE_SIGNALED_BIT);
+    _cmdBuffersForIO = _ctx.createGraphicsCommandBuffers("io", 1, 1, 0);
 
     // vao, textures and glb all depends on host-device io
     // one-time commandBuffer _uploadCmd
@@ -132,11 +133,10 @@ void VkApplication::teardown()
         // vma buffer
         // unmap a buffer not mapped will crash
         // vmaUnmapMemory(_vmaAllocator, _vmaAllocations[i]);
-        vmaDestroyBuffer(vmaAllocator, _uniformBuffers[i], _vmaAllocations[i]);
+        vmaDestroyBuffer(vmaAllocator, std::get<0>(_uniformBuffers[i]), std::get<1>(_uniformBuffers[i]));
         // sync
         vkDestroySemaphore(logicalDevice, _imageCanAcquireSemaphores[i], nullptr);
         vkDestroySemaphore(logicalDevice, _imageRendereredSemaphores[i], nullptr);
-        // vkDestroyFence(logicalDevice, _inFlightFences[i], nullptr);
     }
 
     // vkDestroyCommandPool(logicalDevice, _commandPool, nullptr);
@@ -585,27 +585,29 @@ void VkApplication::createPersistentBuffer(
 void VkApplication::createUniformBuffers()
 {
     VkDeviceSize bufferSize = sizeof(UniformDataDef1);
-    _uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-    _vmaAllocations.resize(MAX_FRAMES_IN_FLIGHT);
-    _vmaAllocationInfos.resize(MAX_FRAMES_IN_FLIGHT);
+    _uniformBuffers.reserve(MAX_FRAMES_IN_FLIGHT);
+
+    // _vmaAllocations.resize(MAX_FRAMES_IN_FLIGHT);
+    // _vmaAllocationInfos.resize(MAX_FRAMES_IN_FLIGHT);
+
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
-        createPersistentBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-                                   VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-                               "Uniform buffer " + std::to_string(i),
-                               _uniformBuffers[i],
-                               _vmaAllocations[i],
-                               _vmaAllocationInfos[i]);
+        _uniformBuffers.emplace_back(_ctx.createPersistentBuffer(
+            "Uniform buffer " + std::to_string(i),
+            bufferSize,
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+            ));
     }
 }
 
 void VkApplication::updateUniformBuffer(int currentFrameId)
 {
+    ASSERT(currentFrameId >= 0 && currentFrameId < _uniformBuffers.size(), "currentFrameId must be within the range");
     auto logicalDevice = _ctx.getLogicDevice();
     auto vmaAllocator = _ctx.getVmaAllocator();
     auto swapChainExtent = _ctx.getSwapChainExtent();
+
+    auto vmaAllocation = std::get<1>(_uniformBuffers[currentFrameId]);
 
     auto view = _camera.viewTransformLH();
     auto persPrj = PerspectiveProjectionTransformLH(0.0001f, 200.0f, 0.3f,
@@ -624,10 +626,10 @@ void VkApplication::updateUniformBuffer(int currentFrameId)
     ubo.mvp = mvp;
 
     void *mappedMemory{nullptr};
-    VK_CHECK(vmaMapMemory(vmaAllocator, _vmaAllocations[currentFrameId], &mappedMemory));
+    VK_CHECK(vmaMapMemory(vmaAllocator, vmaAllocation, &mappedMemory));
     memcpy(mappedMemory, &ubo, sizeof(UniformDataDef1));
     // memcpy(mappedMemory, &ubo, sizeof(ubo));
-    vmaUnmapMemory(vmaAllocator, _vmaAllocations[currentFrameId]);
+    vmaUnmapMemory(vmaAllocator, vmaAllocation);
 }
 
 void VkApplication::bindResourceToDescriptorSets()
@@ -647,7 +649,7 @@ void VkApplication::bindResourceToDescriptorSets()
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
         VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = _uniformBuffers[i];
+        bufferInfo.buffer = std::get<0>(_uniformBuffers[i]);
         bufferInfo.offset = 0;
         bufferInfo.range = sizeof(UniformDataDef1);
 

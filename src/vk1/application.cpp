@@ -23,8 +23,8 @@ void VkApplication::init()
     createUniformBuffers();
 
     // application logic
-    _cmdBuffersForRendering = _ctx.createGraphicsCommandBuffers("rendering", MAX_FRAMES_IN_FLIGHT, 
-    MAX_FRAMES_IN_FLIGHT, VK_FENCE_CREATE_SIGNALED_BIT);
+    _cmdBuffersForRendering = _ctx.createGraphicsCommandBuffers("rendering", MAX_FRAMES_IN_FLIGHT,
+                                                                MAX_FRAMES_IN_FLIGHT, VK_FENCE_CREATE_SIGNALED_BIT);
     _cmdBuffersForIO = _ctx.createGraphicsCommandBuffers("io", 1, 1, 0);
 
     // vao, textures and glb all depends on host-device io
@@ -595,8 +595,7 @@ void VkApplication::createUniformBuffers()
         _uniformBuffers.emplace_back(_ctx.createPersistentBuffer(
             "Uniform buffer " + std::to_string(i),
             bufferSize,
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
-            ));
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT));
     }
 }
 
@@ -1135,6 +1134,7 @@ void VkApplication::postHostDeviceIO()
 {
     auto logicalDevice = _ctx.getLogicDevice();
     auto graphicsQueue = _ctx.getGraphicsQueue();
+    auto vmaAllocator = _ctx.getVmaAllocator();
 
     ASSERT(_cmdBuffersForIO.size() == 1, "Only use 1 cmdBuffer for IO")
     const auto uploadCmdBuffer = std::get<1>(_cmdBuffersForIO[0]);
@@ -1174,17 +1174,20 @@ void VkApplication::postHostDeviceIO()
     // for glb Scene
     for (size_t i = 0; i < _stagingVbForMesh.size(); ++i)
     {
-        vkDestroyBuffer(logicalDevice, _stagingVbForMesh[i], nullptr);
+        vmaDestroyBuffer(vmaAllocator, std::get<0>(_stagingVbForMesh[i]), std::get<1>(_stagingVbForMesh[i]));
     }
     for (size_t i = 0; i < _stagingIbForMesh.size(); ++i)
     {
-        vkDestroyBuffer(logicalDevice, _stagingIbForMesh[i], nullptr);
+        vmaDestroyBuffer(vmaAllocator, std::get<0>(_stagingIbForMesh[i]), std::get<1>(_stagingIbForMesh[i]));
+    }
+    // for indirectDrawBuffer
+    {
+        vmaDestroyBuffer(vmaAllocator, std::get<0>(_stagingIndirectDrawBuffer), std::get<1>(_stagingIndirectDrawBuffer));
     }
     // for material buffer
-    if (_stagingIndirectDrawBuffer != VK_NULL_HANDLE)
-        vkDestroyBuffer(logicalDevice, _stagingIndirectDrawBuffer, nullptr);
-    if (_stagingMatBuffer != VK_NULL_HANDLE)
-        vkDestroyBuffer(logicalDevice, _stagingMatBuffer, nullptr);
+    {
+        vmaDestroyBuffer(vmaAllocator, std::get<0>(_stagingMatBuffer), std::get<1>(_stagingMatBuffer));
+    }
 }
 
 // // cull face be careful
@@ -1789,27 +1792,12 @@ void VkApplication::loadGLB()
         {
             auto vertexByteSizeMesh = sizeof(Vertex) * mesh.vertices.size();
             auto vertexBufferPtr = reinterpret_cast<const void *>(mesh.vertices.data());
-            // to upload data from host to device, needs stagingBuffer
-            // create stagingVbForMesh to streaming only this mesh to device buffer
-            VmaAllocation vmaStagingMeshVerticesBufferAllocation{nullptr};
-            VkBufferCreateInfo verticeBufferCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = vertexByteSizeMesh,
-                .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            };
-            const VmaAllocationCreateInfo stagingVerticeBufferAllocationCreateInfo = {
-                .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                         VMA_ALLOCATION_CREATE_MAPPED_BIT,
-                .usage = VMA_MEMORY_USAGE_CPU_ONLY,
-                .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT};
-            VkBuffer stagingVerticeBuffer;
-            VK_CHECK(vmaCreateBuffer(vmaAllocator, &verticeBufferCreateInfo,
-                                     &stagingVerticeBufferAllocationCreateInfo,
-                                     &stagingVerticeBuffer,
-                                     &vmaStagingMeshVerticesBufferAllocation, nullptr));
-            _stagingVbForMesh.push_back(stagingVerticeBuffer);
+
+            _stagingVbForMesh.emplace_back(_ctx.createStagingBuffer(
+                "Staging Vertices Buffer Mesh " + std::to_string(meshId),
+                vertexByteSizeMesh));
+            const auto &stagingVerticeBuffer = std::get<0>(_stagingVbForMesh.back());
+            const auto &vmaStagingMeshVerticesBufferAllocation = std::get<1>(_stagingVbForMesh.back());
             // copy vb from host to device, region
             void *mappedMemory{nullptr};
             VK_CHECK(vmaMapMemory(vmaAllocator, vmaStagingMeshVerticesBufferAllocation,
@@ -1821,43 +1809,30 @@ void VkApplication::loadGLB()
                                 .dstOffset = deviceCompositeVertexBufferOffsetInBytes,
                                 .size = vertexByteSizeMesh};
             vkCmdCopyBuffer(uploadCmdBuffer, stagingVerticeBuffer, _compositeVB, 1, &region);
-
             deviceCompositeVertexBufferOffsetInBytes += vertexByteSizeMesh;
 
             // copy ib from host to device
             auto indicesByteSizeMesh = sizeof(uint32_t) * mesh.indices.size();
             auto indicesBufferPtr = reinterpret_cast<const void *>(mesh.indices.data());
 
-            VmaAllocation vmaStagingMeshIndiceBufferAllocation{nullptr};
-            VkBufferCreateInfo bufferCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = indicesByteSizeMesh,
-                .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            };
-            const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
-                .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                         VMA_ALLOCATION_CREATE_MAPPED_BIT,
-                .usage = VMA_MEMORY_USAGE_CPU_ONLY,
-                .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT};
-            VkBuffer stagingIndiceBuffer;
-            VK_CHECK(vmaCreateBuffer(vmaAllocator, &bufferCreateInfo, &stagingAllocationCreateInfo,
-                                     &stagingIndiceBuffer,
-                                     &vmaStagingMeshIndiceBufferAllocation, nullptr));
-            _stagingIbForMesh.push_back(stagingIndiceBuffer);
+            _stagingIbForMesh.emplace_back(_ctx.createStagingBuffer(
+                "Staging Indices Buffer Mesh  " + std::to_string(meshId),
+                indicesByteSizeMesh));
+            const auto &stagingIndicesBuffer = std::get<0>(_stagingIbForMesh.back());
+            const auto &vmaStagingMeshIndicesBufferAllocation = std::get<1>(_stagingIbForMesh.back());
+
             // copy ib from host to device, region
             void *mappedMemoryForIB{nullptr};
-            VK_CHECK(vmaMapMemory(vmaAllocator, vmaStagingMeshIndiceBufferAllocation,
+            VK_CHECK(vmaMapMemory(vmaAllocator, vmaStagingMeshIndicesBufferAllocation,
                                   &mappedMemoryForIB));
             memcpy(mappedMemoryForIB, indicesBufferPtr, indicesByteSizeMesh);
-            vmaUnmapMemory(vmaAllocator, vmaStagingMeshIndiceBufferAllocation);
+            vmaUnmapMemory(vmaAllocator, vmaStagingMeshIndicesBufferAllocation);
 
             // cmd to copy from staging to device
             VkBufferCopy regionForIB{.srcOffset = 0,
                                      .dstOffset = deviceCompositeIndicesBufferOffsetInBytes,
                                      .size = indicesByteSizeMesh};
-            vkCmdCopyBuffer(uploadCmdBuffer, stagingIndiceBuffer, _compositeIB, 1, &regionForIB);
+            vkCmdCopyBuffer(uploadCmdBuffer, stagingIndicesBuffer, _compositeIB, 1, &regionForIB);
 
             deviceCompositeIndicesBufferOffsetInBytes += indicesByteSizeMesh;
             // reserve still needs push_back/emplace_back
@@ -2192,37 +2167,23 @@ void VkApplication::loadGLB()
         {
             // create staging buffer
             auto materialBufferPtr = reinterpret_cast<const void *>(scene->materials.data());
+
             // staging buffer for matBuffer
-            VmaAllocation vmaStagingMatBufferAllocation{nullptr};
-            VkBufferCreateInfo bufferCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = materialByteSize,
-                .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            };
-            const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
-                .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                         VMA_ALLOCATION_CREATE_MAPPED_BIT,
-                .usage = VMA_MEMORY_USAGE_CPU_ONLY,
-                .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT};
-            VK_CHECK(vmaCreateBuffer(vmaAllocator, &bufferCreateInfo,
-                                     &stagingAllocationCreateInfo,
-                                     &_stagingMatBuffer,
-                                     &vmaStagingMatBufferAllocation, nullptr));
+            _stagingMatBuffer = _ctx.createStagingBuffer("Staging Material Buffer", materialByteSize);
+            const auto &stagingMatBuffer = std::get<0>(_stagingMatBuffer);
+            const auto &vmaStagingMatBufferAllocation = std::get<1>(_stagingMatBuffer);
+
             // copy matBuffer from host to device, region
             void *mappedMemoryForMatB{nullptr};
             VK_CHECK(vmaMapMemory(vmaAllocator, vmaStagingMatBufferAllocation,
                                   &mappedMemoryForMatB));
             memcpy(mappedMemoryForMatB, materialBufferPtr, materialByteSize);
             vmaUnmapMemory(vmaAllocator, vmaStagingMatBufferAllocation);
-        }
-        {
             // cmd to copy from staging to device
             VkBufferCopy regionForMatB{.srcOffset = 0,
                                        .dstOffset = 0,
                                        .size = materialByteSize};
-            vkCmdCopyBuffer(uploadCmdBuffer, _stagingMatBuffer, _compositeMatB, 1, &regionForMatB);
+            vkCmdCopyBuffer(uploadCmdBuffer, stagingMatBuffer, _compositeMatB, 1, &regionForMatB);
         }
 
         // packing for indirectDrawBuffer
@@ -2261,23 +2222,10 @@ void VkApplication::loadGLB()
             // create staging buffer
             auto indirectDrawBufferPtr = reinterpret_cast<const void *>(indirectDrawParams.data());
             // staging buffer for indirectDrawBuffer
-            VmaAllocation vmaStagingIndirectDrawBufferAllocation{nullptr};
-            VkBufferCreateInfo bufferCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = indirectDrawBufferByteSize,
-                .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            };
-            const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
-                .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                         VMA_ALLOCATION_CREATE_MAPPED_BIT,
-                .usage = VMA_MEMORY_USAGE_CPU_ONLY,
-                .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT};
-            VK_CHECK(vmaCreateBuffer(vmaAllocator, &bufferCreateInfo,
-                                     &stagingAllocationCreateInfo,
-                                     &_stagingIndirectDrawBuffer,
-                                     &vmaStagingIndirectDrawBufferAllocation, nullptr));
+            _stagingIndirectDrawBuffer = _ctx.createStagingBuffer("Staging Indirect Draw Buffer", indirectDrawBufferByteSize);
+            const auto &stagingIndirectDrawBuffer = std::get<0>(_stagingIndirectDrawBuffer);
+            const auto &vmaStagingIndirectDrawBufferAllocation = std::get<1>(_stagingIndirectDrawBuffer);
+
             // copy IndirectDrawBuffer from host to device, region
             void *mappedMemoryForIndirectDrawBuffer{nullptr};
             VK_CHECK(vmaMapMemory(vmaAllocator, vmaStagingIndirectDrawBufferAllocation,
@@ -2285,13 +2233,12 @@ void VkApplication::loadGLB()
             memcpy(mappedMemoryForIndirectDrawBuffer, indirectDrawBufferPtr,
                    indirectDrawBufferByteSize);
             vmaUnmapMemory(vmaAllocator, vmaStagingIndirectDrawBufferAllocation);
-        }
-        {
+
             // cmd to copy from staging to device
             VkBufferCopy region{.srcOffset = 0,
                                 .dstOffset = 0,
                                 .size = indirectDrawBufferByteSize};
-            vkCmdCopyBuffer(uploadCmdBuffer, _stagingIndirectDrawBuffer, _indirectDrawB, 1, &region);
+            vkCmdCopyBuffer(uploadCmdBuffer, stagingIndirectDrawBuffer, _indirectDrawB, 1, &region);
         }
     }
 }

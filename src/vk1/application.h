@@ -72,10 +72,10 @@ class VkApplication
 public:
     VkApplication() = delete;
     VkApplication(
-      VkContext &ctx, 
-    const Camera& camera,
-    const std::string& model) 
-    : _ctx(ctx), _camera(camera), _model(model)
+        VkContext &ctx,
+        const Camera &camera,
+        const std::string &model)
+        : _ctx(ctx), _camera(camera), _model(model)
     {
     }
     void init();
@@ -84,12 +84,6 @@ public:
     void renderPerFrame();
 
 private:
-    // // only depends on vk surface, one time deal
-    // void prepareSwapChainCreation();
-    // called every resize();
-    // void createSwapChain();
-    // void createSwapChainImageViews();
-    
     void createSwapChainRenderPass();
     // when resize occurs;
     void recreateSwapChain();
@@ -122,7 +116,6 @@ private:
     void createCommandBuffer();
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
     void createPerFrameSyncObjects();
-
 
     // app-specific
     void preHostDeviceIO();
@@ -189,9 +182,7 @@ private:
     // std::vector<VkBuffer> _uniformBuffers;
     // std::vector<VmaAllocation> _vmaAllocations;
     // std::vector<VmaAllocationInfo> _vmaAllocationInfos;
-
     std::vector<std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo>> _uniformBuffers;
-
 
     // graphics pipeline
     // for multiple sets + bindings
@@ -224,10 +215,10 @@ private:
 
     // glb scene
     // a lot of stageBuffers
-    std::vector<VkBuffer> _stagingVbForMesh;
-    std::vector<VkBuffer> _stagingIbForMesh;
-    VkBuffer _stagingIndirectDrawBuffer{VK_NULL_HANDLE};
-    VkBuffer _stagingMatBuffer{VK_NULL_HANDLE};
+    std::vector<std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo>> _stagingVbForMesh;
+    std::vector<std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo>> _stagingIbForMesh;
+    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> _stagingIndirectDrawBuffer;
+    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> _stagingMatBuffer;
 
     // device buffer
     VkBuffer _compositeVB{VK_NULL_HANDLE};

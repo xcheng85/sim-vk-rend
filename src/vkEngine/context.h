@@ -113,6 +113,10 @@ public:
         VkDeviceSize bufferSizeInBytes,
         VkBufferUsageFlags bufferUsageFlag);
 
+    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> createStagingBuffer(
+        const std::string &name,
+        VkDeviceSize bufferSizeInBytes);
+
     VkInstance getInstance() const;
     VkDevice getLogicDevice() const;
     VmaAllocator getVmaAllocator() const;

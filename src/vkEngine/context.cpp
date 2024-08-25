@@ -104,6 +104,10 @@ public:
         VkDeviceSize bufferSizeInBytes,
         VkBufferUsageFlags bufferUsageFlag);
 
+    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> createStagingBuffer(
+        const std::string &name,
+        VkDeviceSize bufferSizeInBytes);
+
     inline auto getLogicDevice() const
     {
         return _logicalDevice;
@@ -1326,7 +1330,7 @@ std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl
     uint32_t inflightCount,
     VkFenceCreateFlags flags)
 {
-    return this->createCommandBuffers(name, count, inflightCount,flags,
+    return this->createCommandBuffers(name, count, inflightCount, flags,
                                       _transferQueueFamilyIndex,
                                       _transferQueue);
 }
@@ -1369,7 +1373,7 @@ std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl
     VkFenceCreateInfo fenceInfo{};
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fenceInfo.flags = flags;
-    
+
     for (size_t i = 0; i < inflightCount; ++i)
     {
         VK_CHECK(vkCreateFence(_logicalDevice, &fenceInfo, nullptr, &inFlightFences[i]));
@@ -1436,6 +1440,24 @@ std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::Impl::createPe
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
             VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
         VMA_MEMORY_USAGE_CPU_TO_GPU);
+}
+
+std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::Impl::createStagingBuffer(
+    const std::string &name,
+    VkDeviceSize bufferSizeInBytes)
+{
+    return createBuffer(
+        name,
+        bufferSizeInBytes,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_SHARING_MODE_EXCLUSIVE,
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+            VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        VMA_MEMORY_USAGE_CPU_ONLY);
 }
 
 VkPhysicalDeviceFeatures VkContext::sPhysicalDeviceFeatures = {
@@ -1539,6 +1561,13 @@ std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::createPersiste
     VkBufferUsageFlags bufferUsageFlag)
 {
     return _pimpl->createPersistentBuffer(name, bufferSizeInBytes, bufferUsageFlag);
+}
+
+std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::createStagingBuffer(
+    const std::string &name,
+    VkDeviceSize bufferSizeInBytes)
+{
+    return _pimpl->createStagingBuffer(name, bufferSizeInBytes);
 }
 
 VkInstance VkContext::getInstance() const

@@ -636,7 +636,7 @@ void VkApplication::bindResourceToDescriptorSets()
     // for glb's vb
     {
         VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = _compositeVB;
+        bufferInfo.buffer = std::get<0>(_compositeVB);
         bufferInfo.offset = 0;
         bufferInfo.range = _compositeVBSizeInByte;
 
@@ -655,7 +655,7 @@ void VkApplication::bindResourceToDescriptorSets()
     // glb indirect draw
     {
         VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = _indirectDrawB;
+        bufferInfo.buffer = std::get<0>(_indirectDrawB);
         bufferInfo.offset = 0;
         bufferInfo.range = _indirectDrawBSizeInByte;
 
@@ -720,7 +720,7 @@ void VkApplication::bindResourceToDescriptorSets()
 
     {
         VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = _compositeMatB;
+        bufferInfo.buffer = std::get<0>(_compositeMatB);
         bufferInfo.offset = 0;
         bufferInfo.range = _compositeMatBSizeInByte;
 
@@ -1053,9 +1053,9 @@ void VkApplication::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t 
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             _pipelineLayout, 4, 1, &_descriptorSetsForMaterialBuffer,
                             0, nullptr);
-    vkCmdBindIndexBuffer(commandBuffer, _compositeIB, 0, VK_INDEX_TYPE_UINT32);
+    vkCmdBindIndexBuffer(commandBuffer, std::get<0>(_compositeIB), 0, VK_INDEX_TYPE_UINT32);
     // how many draws are dependent on how many meshes in the scene.
-    vkCmdDrawIndexedIndirect(commandBuffer, _indirectDrawB, 0, _numMeshes,
+    vkCmdDrawIndexedIndirect(commandBuffer, std::get<0>(_indirectDrawB), 0, _numMeshes,
                              sizeof(IndirectDrawForVulkan));
     vkCmdEndRenderPass(commandBuffer);
     VK_CHECK(vkEndCommandBuffer(commandBuffer));
@@ -1694,59 +1694,26 @@ void VkApplication::loadGLB()
             // ssbo for vertices
             auto bufferByteSize = scene->totalVerticesByteSize;
             _compositeVBSizeInByte = bufferByteSize;
-            VkBufferUsageFlags bufferUsageFlag{
-                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
-                //                    | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
-                | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT};
-            VmaMemoryUsage memoryUsage{
-                VMA_MEMORY_USAGE_GPU_ONLY};
-            VmaAllocation vmaCompositeVerticeBufferAllocation{nullptr};
-            VkBufferCreateInfo bufferCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = bufferByteSize,
-                .usage = bufferUsageFlag,
-            };
-            // for device buffer
-            // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
-            const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
-                .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
-                         VMA_ALLOCATION_CREATE_MAPPED_BIT,
-                .usage = memoryUsage,
-                .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT};
-            VK_CHECK(vmaCreateBuffer(vmaAllocator, &bufferCreateInfo,
-                                     &deviceBufferAllocationCreateInfo,
-                                     &_compositeVB,
-                                     &vmaCompositeVerticeBufferAllocation, nullptr));
+            _compositeVB = _ctx.createDeviceLocalBuffer(
+                "Device Vertices Buffer Combo",
+                bufferByteSize,
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+                    VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
         }
 
         {
             // ssbo for ib
             auto bufferByteSize = scene->totalIndexByteSize;
             _compositeIBSizeInByte = bufferByteSize;
-            VkBufferUsageFlags bufferUsageFlag{
-                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT};
-            VmaMemoryUsage memoryUsage{
-                VMA_MEMORY_USAGE_GPU_ONLY};
-
-            VmaAllocation vmaCompositeIndicesBufferAllocation{VK_NULL_HANDLE};
-            VkBufferCreateInfo bufferCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = bufferByteSize,
-                .usage = bufferUsageFlag,
-            };
-
-            // for device buffer
-            // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
-            const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
-                .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
-                         VMA_ALLOCATION_CREATE_MAPPED_BIT,
-                .usage = memoryUsage,
-                .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT};
-
-            VK_CHECK(vmaCreateBuffer(vmaAllocator, &bufferCreateInfo,
-                                     &deviceBufferAllocationCreateInfo,
-                                     &_compositeIB,
-                                     &vmaCompositeIndicesBufferAllocation, nullptr));
+            _compositeIB = _ctx.createDeviceLocalBuffer(
+                "Device Indices Buffer Combo",
+                bufferByteSize,
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+                    VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                    VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                    VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT);
         }
 
         // upload data to buffer
@@ -1781,7 +1748,7 @@ void VkApplication::loadGLB()
             VkBufferCopy region{.srcOffset = 0,
                                 .dstOffset = deviceCompositeVertexBufferOffsetInBytes,
                                 .size = vertexByteSizeMesh};
-            vkCmdCopyBuffer(uploadCmdBuffer, stagingVerticeBuffer, _compositeVB, 1, &region);
+            vkCmdCopyBuffer(uploadCmdBuffer, stagingVerticeBuffer, std::get<0>(_compositeVB), 1, &region);
             deviceCompositeVertexBufferOffsetInBytes += vertexByteSizeMesh;
 
             // copy ib from host to device
@@ -1805,7 +1772,7 @@ void VkApplication::loadGLB()
             VkBufferCopy regionForIB{.srcOffset = 0,
                                      .dstOffset = deviceCompositeIndicesBufferOffsetInBytes,
                                      .size = indicesByteSizeMesh};
-            vkCmdCopyBuffer(uploadCmdBuffer, stagingIndicesBuffer, _compositeIB, 1, &regionForIB);
+            vkCmdCopyBuffer(uploadCmdBuffer, stagingIndicesBuffer, std::get<0>(_compositeIB), 1, &regionForIB);
 
             deviceCompositeIndicesBufferOffsetInBytes += indicesByteSizeMesh;
             // reserve still needs push_back/emplace_back
@@ -2119,29 +2086,12 @@ void VkApplication::loadGLB()
             // create device buffer
             auto bufferByteSize = materialByteSize;
             _compositeMatBSizeInByte = bufferByteSize;
-            VkBufferUsageFlags bufferUsageFlag{
-                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT};
-            VmaMemoryUsage memoryUsage{
-                VMA_MEMORY_USAGE_GPU_ONLY};
-
-            VmaAllocation vmaMaterialBufferAllocation{VK_NULL_HANDLE};
-            VkBufferCreateInfo bufferCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = bufferByteSize,
-                .usage = bufferUsageFlag,
-            };
-
-            // for device buffer
-            // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
-            const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
-                .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
-                         VMA_ALLOCATION_CREATE_MAPPED_BIT,
-                .usage = memoryUsage,
-                .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT};
-            VK_CHECK(vmaCreateBuffer(vmaAllocator, &bufferCreateInfo,
-                                     &deviceBufferAllocationCreateInfo,
-                                     &_compositeMatB,
-                                     &vmaMaterialBufferAllocation, nullptr));
+            _compositeMatB = _ctx.createDeviceLocalBuffer(
+                "Device Material Buffer Combo",
+                bufferByteSize,
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+                    VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
         }
         {
             // create staging buffer
@@ -2162,7 +2112,7 @@ void VkApplication::loadGLB()
             VkBufferCopy regionForMatB{.srcOffset = 0,
                                        .dstOffset = 0,
                                        .size = materialByteSize};
-            vkCmdCopyBuffer(uploadCmdBuffer, stagingMatBuffer, _compositeMatB, 1, &regionForMatB);
+            vkCmdCopyBuffer(uploadCmdBuffer, stagingMatBuffer, std::get<0>(_compositeMatB), 1, &regionForMatB);
         }
 
         // packing for indirectDrawBuffer
@@ -2172,30 +2122,13 @@ void VkApplication::loadGLB()
             // create device buffer for indirectDraw
             auto bufferByteSize = indirectDrawBufferByteSize;
             _indirectDrawBSizeInByte = bufferByteSize;
-            // both ib and indirectDraw buffer have flag: VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT
-            VkBufferUsageFlags bufferUsageFlag{
-                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT};
-            VmaMemoryUsage memoryUsage{
-                VMA_MEMORY_USAGE_GPU_ONLY};
-
-            VmaAllocation vmaIndirectDrawBufferAllocation{VK_NULL_HANDLE};
-            VkBufferCreateInfo bufferCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = bufferByteSize,
-                .usage = bufferUsageFlag,
-            };
-
-            // for device buffer
-            // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
-            const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
-                .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
-                         VMA_ALLOCATION_CREATE_MAPPED_BIT,
-                .usage = memoryUsage,
-                .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT};
-            VK_CHECK(vmaCreateBuffer(vmaAllocator, &bufferCreateInfo,
-                                     &deviceBufferAllocationCreateInfo,
-                                     &_indirectDrawB,
-                                     &vmaIndirectDrawBufferAllocation, nullptr));
+            _indirectDrawB = _ctx.createDeviceLocalBuffer(
+                "Device IndirectDraw Buffer Combo",
+                bufferByteSize,
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+                    VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                    VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT);
         }
         {
             // create staging buffer
@@ -2217,7 +2150,7 @@ void VkApplication::loadGLB()
             VkBufferCopy region{.srcOffset = 0,
                                 .dstOffset = 0,
                                 .size = indirectDrawBufferByteSize};
-            vkCmdCopyBuffer(uploadCmdBuffer, stagingIndirectDrawBuffer, _indirectDrawB, 1, &region);
+            vkCmdCopyBuffer(uploadCmdBuffer, stagingIndirectDrawBuffer, std::get<0>(_indirectDrawB), 1, &region);
         }
     }
 }

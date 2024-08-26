@@ -108,6 +108,11 @@ public:
         const std::string &name,
         VkDeviceSize bufferSizeInBytes);
 
+    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> createDeviceLocalBuffer(
+        const std::string &name,
+        VkDeviceSize bufferSizeInBytes,
+        VkBufferUsageFlags bufferUsageFlag);
+
     inline auto getLogicDevice() const
     {
         return _logicalDevice;
@@ -1460,6 +1465,22 @@ std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::Impl::createSt
         VMA_MEMORY_USAGE_CPU_ONLY);
 }
 
+std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::Impl::createDeviceLocalBuffer(
+    const std::string &name,
+    VkDeviceSize bufferSizeInBytes,
+    VkBufferUsageFlags bufferUsageFlag)
+{
+    return createBuffer(
+        name,
+        bufferSizeInBytes,
+        bufferUsageFlag,
+        VK_SHARING_MODE_EXCLUSIVE,
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+        VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
+}
+
 VkPhysicalDeviceFeatures VkContext::sPhysicalDeviceFeatures = {
 
 };
@@ -1568,6 +1589,14 @@ std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::createStagingB
     VkDeviceSize bufferSizeInBytes)
 {
     return _pimpl->createStagingBuffer(name, bufferSizeInBytes);
+}
+
+std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::createDeviceLocalBuffer(
+    const std::string &name,
+    VkDeviceSize bufferSizeInBytes,
+    VkBufferUsageFlags bufferUsageFlag)
+{
+    return _pimpl->createDeviceLocalBuffer(name, bufferSizeInBytes, bufferUsageFlag);
 }
 
 VkInstance VkContext::getInstance() const

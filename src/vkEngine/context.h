@@ -117,7 +117,11 @@ public:
         const std::string &name,
         VkDeviceSize bufferSizeInBytes);
 
-    // device local buffer 
+    // device local buffer
+    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> createDeviceLocalBuffer(
+        const std::string &name,
+        VkDeviceSize bufferSizeInBytes,
+        VkBufferUsageFlags bufferUsageFlag);
 
     VkInstance getInstance() const;
     VkDevice getLogicDevice() const;

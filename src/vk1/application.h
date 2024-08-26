@@ -212,10 +212,11 @@ private:
     std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> _stagingMatBuffer;
 
     // device buffer
-    VkBuffer _compositeVB{VK_NULL_HANDLE};
-    VkBuffer _compositeIB{VK_NULL_HANDLE};
-    VkBuffer _compositeMatB{VK_NULL_HANDLE};
-    VkBuffer _indirectDrawB{VK_NULL_HANDLE};
+    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> _compositeVB;
+    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> _compositeIB;
+    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> _compositeMatB;
+    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> _indirectDrawB;
+
     // each buffer's size is needed when bindResourceToDescriptorSet
     uint32_t _compositeVBSizeInByte;
     uint32_t _compositeIBSizeInByte;

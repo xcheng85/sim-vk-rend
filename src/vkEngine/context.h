@@ -117,6 +117,8 @@ public:
         const std::string &name,
         VkDeviceSize bufferSizeInBytes);
 
+    // device local buffer 
+
     VkInstance getInstance() const;
     VkDevice getLogicDevice() const;
     VmaAllocator getVmaAllocator() const;

@@ -550,38 +550,6 @@ void VkApplication::allocateDescriptorSets()
     }
 }
 
-// vma
-void VkApplication::createPersistentBuffer(
-    VkDeviceSize size,
-    VkBufferUsageFlags usage,
-    VkMemoryPropertyFlags properties,
-    const std::string &name,
-    VkBuffer &buffer,
-    VmaAllocation &vmaAllocation,
-    VmaAllocationInfo &vmaAllocationInfo)
-{
-    auto logicalDevice = _ctx.getLogicDevice();
-    auto vmaAllocator = _ctx.getVmaAllocator();
-
-    VkBufferCreateInfo bufferCreateInfo{
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = size,
-        .usage = usage,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-    };
-
-    VmaAllocationCreateInfo vmaAllocationCreateInfo{
-        .flags = 0,
-        .usage = VMA_MEMORY_USAGE_CPU_TO_GPU,
-        .requiredFlags = properties,
-    };
-    VK_CHECK(vmaCreateBuffer(vmaAllocator, &bufferCreateInfo, &vmaAllocationCreateInfo, &buffer,
-                             &vmaAllocation,
-                             nullptr));
-    vmaGetAllocationInfo(vmaAllocator, vmaAllocation, &vmaAllocationInfo);
-    setCorrlationId(buffer, logicalDevice, VK_OBJECT_TYPE_BUFFER, "Persistent Buffer: " + name);
-}
-
 void VkApplication::createUniformBuffers()
 {
     VkDeviceSize bufferSize = sizeof(UniformDataDef1);
@@ -1187,6 +1155,11 @@ void VkApplication::postHostDeviceIO()
     // for material buffer
     {
         vmaDestroyBuffer(vmaAllocator, std::get<0>(_stagingMatBuffer), std::get<1>(_stagingMatBuffer));
+    }
+    // for textures in glb
+    for (size_t i = 0; i < _glbImageStagingBuffers.size(); ++i)
+    {
+        vmaDestroyBuffer(vmaAllocator, std::get<0>(_glbImageStagingBuffers[i]), std::get<1>(_glbImageStagingBuffers[i]));
     }
 }
 
@@ -1853,6 +1826,7 @@ void VkApplication::loadGLB()
         // 1. create image
         // 2. create image view
         // 3. upload through stage buffer
+        size_t textureId = 0;
         for (const auto &texture : scene->textures)
         {
             const auto textureMipLevels = getMipLevelsCount(texture->width,
@@ -1909,34 +1883,38 @@ void VkApplication::loadGLB()
 
             VmaAllocationInfo glbImageAllocationInfo;
             vmaGetAllocationInfo(vmaAllocator, glbImageAllocation, &glbImageAllocationInfo);
-            const auto stagingBufferSize = glbImageAllocationInfo.size;
+            const auto stagingBufferSizeForImage = glbImageAllocationInfo.size;
 
-            VmaAllocation vmaStagingBufferAllocation{nullptr};
-            VkBuffer glbImageStagingBuffer;
-            VkBufferCreateInfo bufferCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = stagingBufferSize,
-                .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT, // for staging buffer
-                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            };
-            const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
-                .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                         VMA_ALLOCATION_CREATE_MAPPED_BIT,
-                .usage = VMA_MEMORY_USAGE_CPU_ONLY,
-            };
-            VK_CHECK(vmaCreateBuffer(vmaAllocator, &bufferCreateInfo, &stagingAllocationCreateInfo,
-                                     &glbImageStagingBuffer,
-                                     &vmaStagingBufferAllocation, nullptr));
-            _glbImageStagingBuffer.emplace_back(glbImageStagingBuffer);
-            if (vmaStagingBufferAllocation != nullptr)
+            // VmaAllocation vmaStagingBufferAllocation{nullptr};
+            // VkBuffer glbImageStagingBuffer;
+            // VkBufferCreateInfo bufferCreateInfo{
+            //     .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            //     .size = stagingBufferSize,
+            //     .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT, // for staging buffer
+            //     .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            // };
+            // const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
+            //     .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+            //              VMA_ALLOCATION_CREATE_MAPPED_BIT,
+            //     .usage = VMA_MEMORY_USAGE_CPU_ONLY,
+            // };
+            // VK_CHECK(vmaCreateBuffer(vmaAllocator, &bufferCreateInfo, &stagingAllocationCreateInfo,
+            //                          &glbImageStagingBuffer,
+            //                          &vmaStagingBufferAllocation, nullptr));
+
+            _glbImageStagingBuffers.emplace_back(_ctx.createStagingBuffer(
+                "Staging Buffer Texture " + std::to_string(textureId),
+                stagingBufferSizeForImage));
+            const auto &glbImageStagingBuffer = std::get<0>(_glbImageStagingBuffers.back());
+            const auto &vmaStagingImageBufferAllocation = std::get<1>(_glbImageStagingBuffers.back());
+            if (vmaStagingImageBufferAllocation != nullptr)
             {
                 void *imageDataPtr{nullptr};
                 // format: VK_FORMAT_R8G8B8A8_UNORM took 4 bytes
                 const auto imageDataSizeInBytes = texture->width * texture->height * 1 * 4;
-                VK_CHECK(vmaMapMemory(vmaAllocator, vmaStagingBufferAllocation,
-                                      &imageDataPtr));
+                VK_CHECK(vmaMapMemory(vmaAllocator, vmaStagingImageBufferAllocation, &imageDataPtr));
                 memcpy(imageDataPtr, texture->data, imageDataSizeInBytes);
-                vmaUnmapMemory(vmaAllocator, vmaStagingBufferAllocation);
+                vmaUnmapMemory(vmaAllocator, vmaStagingImageBufferAllocation);
                 // image layout from undefined to write dst
                 // transition layout
                 // barrier based on mip level, array layers
@@ -2096,6 +2074,7 @@ void VkApplication::loadGLB()
                                          1, &convertToShaderReadBarrier);
                 }
             }
+            ++textureId;
         }
         // sampler
         {

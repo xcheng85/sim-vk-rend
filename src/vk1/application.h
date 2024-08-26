@@ -95,15 +95,6 @@ private:
     void createDescriptorPool();
     // allocate ds from the pool
     void allocateDescriptorSets();
-    // create resource needed for shader.
-    void createPersistentBuffer(
-        VkDeviceSize size,
-        VkBufferUsageFlags usage,
-        VkMemoryPropertyFlags properties,
-        const std::string &name,
-        VkBuffer &buffer,
-        VmaAllocation &vmaAllocation,
-        VmaAllocationInfo &vmaAllocationInfo);
     void createUniformBuffers();
     // called inside renderPerFrame(); some shader data is updated per-frame
     void updateUniformBuffer(int currentFrameId);
@@ -237,7 +228,7 @@ private:
     std::vector<VkImage> _glbImages;
     std::vector<VkImageView> _glbImageViews;
     std::vector<VmaAllocation> _glbImageAllocation;
-    std::vector<VkBuffer> _glbImageStagingBuffer;
+    std::vector<std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo>> _glbImageStagingBuffers;
 
     // samplers in the glb scene
     std::vector<VkSampler> _glbSamplers;

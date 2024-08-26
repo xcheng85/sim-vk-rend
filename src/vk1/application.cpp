@@ -117,10 +117,17 @@ void VkApplication::teardown()
            "_glbImages'size should == _glbImageAllocation's size");
     for (int i = 0; i < _glbImages.size(); ++i)
     {
-        vkDestroyImage(logicalDevice, _glbImages[i], nullptr);
         vmaDestroyImage(vmaAllocator, _glbImages[i], _glbImageAllocation[i]);
     }
+    for (size_t i = 0; i < _glbSamplers.size(); ++i)
+    {
+       vkDestroySampler(logicalDevice, _glbSamplers[i], nullptr);
+    }
 
+    vmaDestroyBuffer(vmaAllocator, std::get<0>(_compositeVB), std::get<1>(_compositeVB));
+    vmaDestroyBuffer(vmaAllocator, std::get<0>(_compositeIB), std::get<1>(_compositeIB));
+    vmaDestroyBuffer(vmaAllocator, std::get<0>(_compositeMatB), std::get<1>(_compositeMatB));
+    vmaDestroyBuffer(vmaAllocator, std::get<0>(_indirectDrawB), std::get<1>(_indirectDrawB));
     // shader data
     vkDestroyDescriptorPool(logicalDevice, _descriptorSetPool, nullptr);
     for (const auto &descriptorSetLayout : _descriptorSetLayouts)
@@ -143,14 +150,6 @@ void VkApplication::teardown()
     vkDestroyPipeline(logicalDevice, _graphicsPipeline, nullptr);
     vkDestroyPipelineLayout(logicalDevice, _pipelineLayout, nullptr);
     vkDestroyRenderPass(logicalDevice, _swapChainRenderPass, nullptr);
-
-    // CRASH
-    // //vmaDestroyAllocator(vmaAllocator);
-
-    // vkDestroyDevice(logicalDevice, nullptr);
-    // vkDestroyDebugUtilsMessengerEXT(instance, _debugMessenger, nullptr);
-    // vkDestroySurfaceKHR(instance, _surface, nullptr);
-    // vkDestroyInstance(instance, nullptr);
     //  _initialized = false;
 }
 

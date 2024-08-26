@@ -65,10 +65,10 @@ public:
         // image is owned by swap chain
         vkDestroySwapchainKHR(_logicalDevice, _swapChain, nullptr);
 
-        // vmaDestroyAllocator(_vmaAllocator);
-        vkDestroyDevice(_logicalDevice, nullptr);
+        vmaDestroyAllocator(_vmaAllocator);
         vkDestroyDebugUtilsMessengerEXT(_instance, _debugMessenger, nullptr);
         vkDestroySurfaceKHR(_instance, _surface, nullptr);
+        vkDestroyDevice(_logicalDevice, nullptr);
         vkDestroyInstance(_instance, nullptr);
     }
 

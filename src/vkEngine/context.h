@@ -123,6 +123,29 @@ public:
         VkDeviceSize bufferSizeInBytes,
         VkBufferUsageFlags bufferUsageFlag);
 
+    std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> createImage(
+        const std::string &name,
+        VkImageType imageType,
+        VkFormat format,
+        VkExtent3D extent,
+        uint32_t textureMipLevelCount,
+        uint32_t textureLayersCount,
+        VkSampleCountFlagBits textureMultiSampleCount,
+        VkImageUsageFlags usage,
+        VkMemoryPropertyFlags memoryFlags,
+        bool generateMips);
+
+    void writeImage(
+        const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
+        const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
+        const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
+        void *rawData);
+
+    void generateMipmaps(
+        const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
+        const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
+        const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer);
+
     VkInstance getInstance() const;
     VkDevice getLogicDevice() const;
     VmaAllocator getVmaAllocator() const;

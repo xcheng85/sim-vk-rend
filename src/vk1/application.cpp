@@ -109,19 +109,19 @@ void VkApplication::teardown()
     // vmaFreeMemory(vmaAllocator, _vmaImageAllocation);
 
     // glb
-    for (const auto &imageView : _glbImageViews)
+    for (const auto &imageEntity : _glbImageEntities)
     {
+        const auto image = std::get<0>(imageEntity);
+        const auto imageView = std::get<1>(imageEntity);
+        const auto imageAllocation = std::get<2>(imageEntity);
+
         vkDestroyImageView(logicalDevice, imageView, nullptr);
+        vmaDestroyImage(vmaAllocator, image, imageAllocation);
     }
-    ASSERT(_glbImages.size() == _glbImageAllocation.size(),
-           "_glbImages'size should == _glbImageAllocation's size");
-    for (int i = 0; i < _glbImages.size(); ++i)
-    {
-        vmaDestroyImage(vmaAllocator, _glbImages[i], _glbImageAllocation[i]);
-    }
+
     for (size_t i = 0; i < _glbSamplers.size(); ++i)
     {
-       vkDestroySampler(logicalDevice, _glbSamplers[i], nullptr);
+        vkDestroySampler(logicalDevice, _glbSamplers[i], nullptr);
     }
 
     vmaDestroyBuffer(vmaAllocator, std::get<0>(_compositeVB), std::get<1>(_compositeVB));
@@ -368,7 +368,7 @@ void VkApplication::createDescriptorSetLayout()
             dsLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
             dsLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
             dsLayoutBinding.binding = 0;
-            dsLayoutBinding.descriptorCount = _glbImageViews.size();
+            dsLayoutBinding.descriptorCount = _glbImageEntities.size();
             setLayoutBindings.emplace_back(dsLayoutBinding);
         }
         {
@@ -672,9 +672,10 @@ void VkApplication::bindResourceToDescriptorSets()
 
     // for glb textures
     std::vector<VkDescriptorImageInfo> glbTextureImageInfos;
-    glbTextureImageInfos.reserve(_glbImageViews.size());
-    for (const auto &imageView : _glbImageViews)
+    glbTextureImageInfos.reserve(_glbImageEntities.size());
+    for (const auto &imageEntity : _glbImageEntities)
     {
+        const auto imageView = std::get<1>(imageEntity);
         glbTextureImageInfos.emplace_back(VkDescriptorImageInfo{
             .sampler = VK_NULL_HANDLE,
             .imageView = imageView,
@@ -1795,253 +1796,47 @@ void VkApplication::loadGLB()
         size_t textureId = 0;
         for (const auto &texture : scene->textures)
         {
+            // 1. create Image
             const auto textureMipLevels = getMipLevelsCount(texture->width,
                                                             texture->height);
-            const auto format{VK_FORMAT_R8G8B8A8_UNORM};
-            VkImageCreateInfo imageCreateInfo{};
-            imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-            imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
-            imageCreateInfo.format = format;
-            imageCreateInfo.mipLevels = textureMipLevels;
-            imageCreateInfo.arrayLayers = 1;
-            imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-            imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-            // usage here: both dst and src as mipmap generation
-            imageCreateInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-            imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            imageCreateInfo.extent = {static_cast<uint32_t>(texture->width),
-                                      static_cast<uint32_t>(texture->height), 1};
-            // no need for VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT, cpu does not need access
-            const VmaAllocationCreateInfo allocCreateInfo = {
-                .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
-                .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
-                .priority = 1.0f,
-            };
-            VkImage glbImage;
-            VmaAllocation glbImageAllocation;
-            VkImageView glbImageView;
-            VK_CHECK(vmaCreateImage(vmaAllocator, &imageCreateInfo, &allocCreateInfo, &glbImage,
-                                    &glbImageAllocation, nullptr));
-            // image view
-            VkImageViewCreateInfo imageViewInfo = {};
-            imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            imageViewInfo.format = format;
-            // subresource range could limit miplevel and layer ranges, here all are open to access
-            imageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            imageViewInfo.subresourceRange.baseMipLevel = 0;
-            imageViewInfo.subresourceRange.baseArrayLayer = 0;
-            imageViewInfo.subresourceRange.layerCount = 1;
-#if defined(LINEAR_TILED_IMAGES)
-            imageViewInfo.subresourceRange.levelCount = 1;
-#else
-            imageViewInfo.subresourceRange.levelCount = textureMipLevels;
-#endif
-            imageViewInfo.image = glbImage;
-            VK_CHECK(vkCreateImageView(logicalDevice, &imageViewInfo, nullptr, &glbImageView));
-            this->_glbImages.emplace_back(glbImage);
-            this->_glbImageAllocation.emplace_back(glbImageAllocation);
-            this->_glbImageViews.emplace_back(glbImageView);
+            const uint32_t textureLayoutCount = 1;
+            const VkExtent3D textureExtent = {static_cast<uint32_t>(texture->width),
+                                              static_cast<uint32_t>(texture->height), 1};
+            const bool generateMipmaps = true;
+            const auto imageEntity = _ctx.createImage("glb_tex_" + std::to_string(textureId),
+                                                      VK_IMAGE_TYPE_2D,
+                                                      VK_FORMAT_R8G8B8A8_UNORM,
+                                                      textureExtent,
+                                                      textureMipLevels,
+                                                      textureLayoutCount,
+                                                      VK_SAMPLE_COUNT_1_BIT,
+                                                      // usage here: both dst and src as mipmap generation
+                                                      VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                                                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                                                      generateMipmaps);
 
-            // staging buffer
-            ASSERT(glbImageAllocation, "glbImageAllocation should be defined");
+            _glbImageEntities.emplace_back(imageEntity);
 
-            VmaAllocationInfo glbImageAllocationInfo;
-            vmaGetAllocationInfo(vmaAllocator, glbImageAllocation, &glbImageAllocationInfo);
-            const auto stagingBufferSizeForImage = glbImageAllocationInfo.size;
-
-            // VmaAllocation vmaStagingBufferAllocation{nullptr};
-            // VkBuffer glbImageStagingBuffer;
-            // VkBufferCreateInfo bufferCreateInfo{
-            //     .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            //     .size = stagingBufferSize,
-            //     .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT, // for staging buffer
-            //     .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            // };
-            // const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
-            //     .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-            //              VMA_ALLOCATION_CREATE_MAPPED_BIT,
-            //     .usage = VMA_MEMORY_USAGE_CPU_ONLY,
-            // };
-            // VK_CHECK(vmaCreateBuffer(vmaAllocator, &bufferCreateInfo, &stagingAllocationCreateInfo,
-            //                          &glbImageStagingBuffer,
-            //                          &vmaStagingBufferAllocation, nullptr));
-
+            // write raw data from cpu to the mipmap level 0 of image
+            const auto stagingBufferSizeForImage = std::get<3>(imageEntity).size;
             _glbImageStagingBuffers.emplace_back(_ctx.createStagingBuffer(
                 "Staging Buffer Texture " + std::to_string(textureId),
                 stagingBufferSizeForImage));
-            const auto &glbImageStagingBuffer = std::get<0>(_glbImageStagingBuffers.back());
-            const auto &vmaStagingImageBufferAllocation = std::get<1>(_glbImageStagingBuffers.back());
-            if (vmaStagingImageBufferAllocation != nullptr)
-            {
-                void *imageDataPtr{nullptr};
-                // format: VK_FORMAT_R8G8B8A8_UNORM took 4 bytes
-                const auto imageDataSizeInBytes = texture->width * texture->height * 1 * 4;
-                VK_CHECK(vmaMapMemory(vmaAllocator, vmaStagingImageBufferAllocation, &imageDataPtr));
-                memcpy(imageDataPtr, texture->data, imageDataSizeInBytes);
-                vmaUnmapMemory(vmaAllocator, vmaStagingImageBufferAllocation);
-                // image layout from undefined to write dst
-                // transition layout
-                // barrier based on mip level, array layers
-                VkImageSubresourceRange subresourceRange = {};
-                subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                subresourceRange.baseMipLevel = 0;
-                subresourceRange.levelCount = textureMipLevels;
-                subresourceRange.layerCount = 1;
 
-                VkImageMemoryBarrier imageMemoryBarrier{};
-                imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                imageMemoryBarrier.image = glbImage;
-                imageMemoryBarrier.subresourceRange = subresourceRange;
-                imageMemoryBarrier.srcAccessMask = VK_ACCESS_NONE; // 0: VK_ACCESS_NONE
-                imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                // VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: written into
-                imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            _ctx.writeImage(
+                _glbImageEntities.back(),
+                _glbImageStagingBuffers.back(),
+                _cmdBuffersForIO[0],
+                texture->data);
 
-                vkCmdPipelineBarrier(
-                    uploadCmdBuffer,
-                    VK_PIPELINE_STAGE_HOST_BIT,
-                    VK_PIPELINE_STAGE_TRANSFER_BIT,
-                    0,
-                    0, nullptr,
-                    0, nullptr,
-                    1, &imageMemoryBarrier);
-                // now image layout(usage) is writable
-                // staging buffer to device-local(image is device local memory)
-                VkBufferImageCopy bufferCopyRegion = {};
-                // mipmap level0: original copy
-                bufferCopyRegion.bufferOffset = 0;
-                // could be depth, stencil and color
-                bufferCopyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                bufferCopyRegion.imageSubresource.mipLevel = 0;
-                bufferCopyRegion.imageSubresource.baseArrayLayer = 0;
-                bufferCopyRegion.imageSubresource.layerCount = 1;
-                bufferCopyRegion.imageOffset.x = bufferCopyRegion.imageOffset.y =
-                    bufferCopyRegion.imageOffset.z = 0;
-                // primad mipmap hierachy
-                bufferCopyRegion.imageExtent.width = texture->width;
-                bufferCopyRegion.imageExtent.height = texture->height;
-                bufferCopyRegion.imageExtent.depth = 1;
-                vkCmdCopyBufferToImage(
-                    uploadCmdBuffer,
-                    glbImageStagingBuffer,
-                    glbImage,
-                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    1,
-                    &bufferCopyRegion);
+            _ctx.generateMipmaps(
+                _glbImageEntities.back(),
+                _glbImageStagingBuffers.back(),
+                _cmdBuffersForIO[0]);
 
-                {
-                    // generate mipmaps
-                    // sample: texturemipmapgen
-                    VkFormatProperties formatProperties;
-                    vkGetPhysicalDeviceFormatProperties(selectedPhysicalDevice,
-                                                        format, &formatProperties);
-                    ASSERT(formatProperties.optimalTilingFeatures &
-                               VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT,
-                           "Selected Physical Device cannot generate mipmaps");
-
-                    VkImageSubresourceRange subresourceRange = {};
-                    subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                    subresourceRange.baseMipLevel = 0;
-                    subresourceRange.levelCount = 1;
-                    subresourceRange.baseArrayLayer = 0;
-                    subresourceRange.layerCount = 1;
-
-                    VkImageMemoryBarrier imageMemoryBarrier{};
-                    imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                    imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                    imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                    imageMemoryBarrier.image = glbImage;
-                    imageMemoryBarrier.subresourceRange = subresourceRange;
-                    imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                    imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-                    imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-                    imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-
-                    int32_t w = texture->width;
-                    int32_t h = texture->height;
-                    for (uint32_t i = 1; i <= textureMipLevels; ++i)
-                    {
-                        // Prepare current mip level as image blit source for next level
-                        imageMemoryBarrier.subresourceRange.baseMipLevel = i - 1;
-                        vkCmdPipelineBarrier(
-                            uploadCmdBuffer,
-                            VK_PIPELINE_STAGE_TRANSFER_BIT,
-                            VK_PIPELINE_STAGE_TRANSFER_BIT,
-                            0,
-                            0, nullptr,
-                            0, nullptr,
-                            1, &imageMemoryBarrier);
-                        // level0 write, barrier, level0 read, level 1write, barrier
-                        // level1 read, ....
-                        if (i == textureMipLevels)
-                        {
-                            break;
-                        }
-                        const int32_t newW = w > 1 ? w >> 1 : w;
-                        const int32_t newH = h > 1 ? h >> 1 : h;
-
-                        VkImageBlit imageBlit{};
-                        imageBlit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                        imageBlit.srcSubresource.layerCount = 1;
-                        imageBlit.srcSubresource.baseArrayLayer = 0;
-                        imageBlit.srcSubresource.mipLevel = i - 1;
-                        imageBlit.srcOffsets[0].x = imageBlit.srcOffsets[0].y = imageBlit.srcOffsets[0].z = 0;
-                        imageBlit.srcOffsets[1].x = w;
-                        imageBlit.srcOffsets[1].y = h;
-                        imageBlit.srcOffsets[1].z = 1;
-
-                        imageBlit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                        imageBlit.dstSubresource.layerCount = 1;
-                        imageBlit.srcSubresource.baseArrayLayer = 0;
-                        imageBlit.dstSubresource.mipLevel = i;
-                        imageBlit.dstOffsets[1].x = newW;
-                        imageBlit.dstOffsets[1].y = newH;
-                        imageBlit.dstOffsets[1].z = 1;
-
-                        vkCmdBlitImage(uploadCmdBuffer,
-                                       glbImage,
-                                       VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                                       glbImage,
-                                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                       1,
-                                       &imageBlit,
-                                       VK_FILTER_LINEAR);
-                        w = newW;
-                        h = newH;
-                    }
-                    // all mip layers are in TRANSFER_SRC --> SHADER_READ
-                    const VkImageMemoryBarrier convertToShaderReadBarrier = {
-                        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-                        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-                        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                        .image = glbImage,
-                        .subresourceRange =
-                            {
-                                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                                .baseMipLevel = 0,
-                                .levelCount = textureMipLevels,
-                                .baseArrayLayer = 0,
-                                .layerCount = 1,
-                            },
-
-                    };
-                    vkCmdPipelineBarrier(uploadCmdBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0,
-                                         nullptr,
-                                         1, &convertToShaderReadBarrier);
-                }
-            }
             ++textureId;
         }
+        
         // sampler
         {
             VkSampler sampler;

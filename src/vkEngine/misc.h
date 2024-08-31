@@ -165,3 +165,7 @@ void setCorrlationId(T handle, VkDevice logicalDevice, VkObjectType type, const 
 
     VK_CHECK(vkSetDebugUtilsObjectNameEXT(logicalDevice, &objectNameInfo));
 }
+
+VkImageViewType getImageViewType(VkImageType imageType);
+uint32_t get2DImageSizeInBytes(VkExtent2D extent, VkFormat imageType);
+uint32_t get3DImageSizeInBytes(VkExtent3D extent, VkFormat imageType);

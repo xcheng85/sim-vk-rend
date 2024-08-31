@@ -113,6 +113,29 @@ public:
         VkDeviceSize bufferSizeInBytes,
         VkBufferUsageFlags bufferUsageFlag);
 
+    std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> createImage(
+        const std::string &name,
+        VkImageType imageType,
+        VkFormat format,
+        VkExtent3D extent,
+        uint32_t textureMipLevelCount,
+        uint32_t textureLayersCount,
+        VkSampleCountFlagBits textureMultiSampleCount,
+        VkImageUsageFlags usage,
+        VkMemoryPropertyFlags memoryFlags,
+        bool generateMips);
+
+    void writeImage(
+        const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
+        const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
+        const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
+        void *rawData);
+
+    void generateMipmaps(
+        const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
+        const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
+        const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer);
+
     inline auto getLogicDevice() const
     {
         return _logicalDevice;
@@ -1481,6 +1504,258 @@ std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::Impl::createDe
         VMA_MEMORY_USAGE_GPU_ONLY);
 }
 
+std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> VkContext::Impl::createImage(
+    const std::string &name,
+    VkImageType imageType,
+    VkFormat format,
+    VkExtent3D extent,
+    uint32_t textureMipLevelCount,
+    uint32_t textureLayersCount,
+    VkSampleCountFlagBits textureMultiSampleCount,
+    VkImageUsageFlags usage,
+    VkMemoryPropertyFlags memoryFlags,
+    bool generateMips)
+{
+    if (generateMips)
+    {
+        textureMipLevelCount = getMipLevelsCount(extent.width, extent.height);
+    }
+    ASSERT(!(textureMipLevelCount > 1 && textureMultiSampleCount != VK_SAMPLE_COUNT_1_BIT), "MSAA cannot have mipmaps");
+
+    VkImageCreateInfo imageCreateInfo{};
+    imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageCreateInfo.imageType = imageType;
+    imageCreateInfo.format = format;
+    imageCreateInfo.mipLevels = textureMipLevelCount;
+    imageCreateInfo.arrayLayers = textureLayersCount;
+    imageCreateInfo.samples = textureMultiSampleCount;
+    imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageCreateInfo.usage = usage;
+    imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageCreateInfo.extent = extent;
+    // no need for VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT, cpu does not need access
+    const VmaAllocationCreateInfo allocCreateInfo = {
+        .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+        .usage = memoryFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+                     ? VMA_MEMORY_USAGE_AUTO_PREFER_HOST
+                     : VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+        .priority = 1.0f,
+    };
+    VkImage image;
+    VmaAllocation imageAllocation;
+    VmaAllocationInfo imageAllocationInfo;
+    VkImageView imageView;
+    VK_CHECK(vmaCreateImage(_vmaAllocator, &imageCreateInfo, &allocCreateInfo, &image,
+                            &imageAllocation, nullptr));
+    vmaGetAllocationInfo(_vmaAllocator, imageAllocation, &imageAllocationInfo);
+    // image view
+    VkImageViewCreateInfo imageViewInfo = {};
+    imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    imageViewInfo.viewType = getImageViewType(imageType);
+    imageViewInfo.format = format;
+    // subresource range could limit miplevel and layer ranges, here all are open to access
+    imageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    imageViewInfo.subresourceRange.baseMipLevel = 0;
+    imageViewInfo.subresourceRange.baseArrayLayer = 0;
+    imageViewInfo.subresourceRange.layerCount = textureLayersCount;
+    imageViewInfo.subresourceRange.levelCount = textureMipLevelCount;
+    imageViewInfo.image = image;
+    VK_CHECK(vkCreateImageView(_logicalDevice, &imageViewInfo, nullptr, &imageView));
+
+    return make_tuple(image, imageView, imageAllocation, imageAllocationInfo, textureMipLevelCount,
+                      extent, format);
+}
+
+void VkContext::Impl::writeImage(
+    const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
+    const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
+    const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
+    void *rawData)
+{
+    const auto imageHandle = std::get<0>(image);
+    const auto textureMipLevelCount = std::get<4>(image);
+    const auto extent = std::get<5>(image);
+    const auto stagingBufferHandle = std::get<0>(stagingBuffer);
+    const auto vmaStagingImageBufferAllocation = std::get<1>(stagingBuffer);
+    const auto cmdBufferHandle = std::get<1>(cmdBuffer);
+
+    void *imageDataPtr{nullptr};
+    // format: VK_FORMAT_R8G8B8A8_UNORM took 4 bytes
+    const auto imageDataSizeInBytes = get3DImageSizeInBytes(extent, VK_FORMAT_R8G8B8A8_UNORM);
+    VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingImageBufferAllocation, &imageDataPtr));
+    memcpy(imageDataPtr, rawData, imageDataSizeInBytes);
+    vmaUnmapMemory(_vmaAllocator, vmaStagingImageBufferAllocation);
+
+    // image layout from undefined to write dst
+    // transition layout
+    // barrier based on mip level, array layers
+    VkImageSubresourceRange subresourceRange = {};
+    subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    subresourceRange.baseMipLevel = 0;
+    subresourceRange.levelCount = textureMipLevelCount;
+    subresourceRange.layerCount = 1;
+
+    VkImageMemoryBarrier imageMemoryBarrier{};
+    imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    imageMemoryBarrier.image = imageHandle;
+    imageMemoryBarrier.subresourceRange = subresourceRange;
+    imageMemoryBarrier.srcAccessMask = VK_ACCESS_NONE; // 0: VK_ACCESS_NONE
+    imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    // VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: written into
+    imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    vkCmdPipelineBarrier(
+        cmdBufferHandle,
+        VK_PIPELINE_STAGE_HOST_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &imageMemoryBarrier);
+
+    // now image layout(usage) is writable
+    // staging buffer to device-local(image is device local memory)
+    VkBufferImageCopy bufferCopyRegion = {};
+    // mipmap level0: original copy
+    bufferCopyRegion.bufferOffset = 0;
+    // could be depth, stencil and color
+    bufferCopyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    bufferCopyRegion.imageSubresource.mipLevel = 0;
+    bufferCopyRegion.imageSubresource.baseArrayLayer = 0;
+    bufferCopyRegion.imageSubresource.layerCount = 1;
+    bufferCopyRegion.imageOffset.x = bufferCopyRegion.imageOffset.y =
+        bufferCopyRegion.imageOffset.z = 0;
+
+    // write to the image mipmap level0
+    bufferCopyRegion.imageExtent.width = extent.width;
+    bufferCopyRegion.imageExtent.height = extent.height;
+    bufferCopyRegion.imageExtent.depth = 1;
+    vkCmdCopyBufferToImage(
+        cmdBufferHandle,
+        stagingBufferHandle,
+        imageHandle,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1,
+        &bufferCopyRegion);
+}
+
+void VkContext::Impl::generateMipmaps(
+    const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
+    const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
+    const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer)
+{
+    const auto imageHandle = std::get<0>(image);
+    const auto textureMipLevelCount = std::get<4>(image);
+    const auto extent = std::get<5>(image);
+    const auto format = std::get<6>(image);
+    const auto cmdBufferHandle = std::get<1>(cmdBuffer);
+
+    // generate mipmaps
+    // sample: texturemipmapgen
+    VkFormatProperties formatProperties;
+    vkGetPhysicalDeviceFormatProperties(_selectedPhysicalDevice, format, &formatProperties);
+    ASSERT(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT, "Selected Physical Device cannot generate mipmaps");
+
+    // make sure write to level0 is completed
+    VkImageSubresourceRange subresourceRange = {};
+    subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    subresourceRange.baseMipLevel = 0;
+    subresourceRange.levelCount = 1;
+    subresourceRange.baseArrayLayer = 0;
+    subresourceRange.layerCount = 1;
+
+    VkImageMemoryBarrier imageMemoryBarrier{};
+    imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    imageMemoryBarrier.image = imageHandle;
+    imageMemoryBarrier.subresourceRange = subresourceRange;
+    imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+    int32_t w = extent.width;
+    int32_t h = extent.height;
+    for (uint32_t i = 1; i <= textureMipLevelCount; ++i)
+    {
+        // Prepare current mip level as image blit source for next level
+        imageMemoryBarrier.subresourceRange.baseMipLevel = i - 1;
+        vkCmdPipelineBarrier(
+            cmdBufferHandle,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0,
+            0, nullptr,
+            0, nullptr,
+            1, &imageMemoryBarrier);
+        // level0 write, barrier, level0 read, level 1write, barrier
+        // level1 read, ....
+        if (i == textureMipLevelCount)
+        {
+            break;
+        }
+        const int32_t newW = w > 1 ? w >> 1 : w;
+        const int32_t newH = h > 1 ? h >> 1 : h;
+
+        VkImageBlit imageBlit{};
+        imageBlit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageBlit.srcSubresource.layerCount = 1;
+        imageBlit.srcSubresource.baseArrayLayer = 0;
+        imageBlit.srcSubresource.mipLevel = i - 1;
+        imageBlit.srcOffsets[0].x = imageBlit.srcOffsets[0].y = imageBlit.srcOffsets[0].z = 0;
+        imageBlit.srcOffsets[1].x = w;
+        imageBlit.srcOffsets[1].y = h;
+        imageBlit.srcOffsets[1].z = 1;
+
+        imageBlit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageBlit.dstSubresource.layerCount = 1;
+        imageBlit.srcSubresource.baseArrayLayer = 0;
+        imageBlit.dstSubresource.mipLevel = i;
+        imageBlit.dstOffsets[1].x = newW;
+        imageBlit.dstOffsets[1].y = newH;
+        imageBlit.dstOffsets[1].z = 1;
+
+        vkCmdBlitImage(cmdBufferHandle,
+                       imageHandle,
+                       VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                       imageHandle,
+                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                       1,
+                       &imageBlit,
+                       VK_FILTER_LINEAR);
+        w = newW;
+        h = newH;
+    }
+    // all mip layers are in TRANSFER_SRC --> SHADER_READ
+    const VkImageMemoryBarrier convertToShaderReadBarrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = imageHandle,
+        .subresourceRange =
+            {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = textureMipLevelCount,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+
+    };
+    vkCmdPipelineBarrier(cmdBufferHandle, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0,
+                         nullptr,
+                         1, &convertToShaderReadBarrier);
+}
+
 VkPhysicalDeviceFeatures VkContext::sPhysicalDeviceFeatures = {
 
 };
@@ -1597,6 +1872,39 @@ std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::createDeviceLo
     VkBufferUsageFlags bufferUsageFlag)
 {
     return _pimpl->createDeviceLocalBuffer(name, bufferSizeInBytes, bufferUsageFlag);
+}
+
+std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> VkContext::createImage(
+    const std::string &name,
+    VkImageType imageType,
+    VkFormat format,
+    VkExtent3D extent,
+    uint32_t textureMipLevelCount,
+    uint32_t textureLayersCount,
+    VkSampleCountFlagBits textureMultiSampleCount,
+    VkImageUsageFlags usage,
+    VkMemoryPropertyFlags memoryFlags,
+    bool generateMips)
+{
+    return _pimpl->createImage(name, imageType, format, extent, textureMipLevelCount,
+                               textureLayersCount, textureMultiSampleCount, usage, memoryFlags, generateMips);
+}
+
+void VkContext::writeImage(
+    const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
+    const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
+    const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
+    void *rawData)
+{
+    return _pimpl->writeImage(image, stagingBuffer, cmdBuffer, rawData);
+}
+
+void VkContext::generateMipmaps(
+    const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
+    const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
+    const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer)
+{
+    return _pimpl->generateMipmaps(image, stagingBuffer, cmdBuffer);
 }
 
 VkInstance VkContext::getInstance() const

@@ -185,7 +185,6 @@ std::vector<char> glslToSpirv(const std::vector<char> &shaderText,
     byteCode.resize(spirvArtifacts.size() * (sizeof(uint32_t) / sizeof(char)));
     std::memcpy(byteCode.data(), spirvArtifacts.data(), byteCode.size());
 
-
     return byteCode;
 }
 
@@ -213,4 +212,50 @@ VkShaderModule createShaderModule(
     };
     VK_CHECK(vkCreateShaderModule(logicalDevice, &shaderModule, nullptr, &res));
     return res;
+}
+
+VkImageViewType getImageViewType(VkImageType imageType)
+{
+    switch (imageType)
+    {
+    case VK_IMAGE_TYPE_1D:
+        return VK_IMAGE_VIEW_TYPE_1D;
+    case VK_IMAGE_TYPE_2D:
+        return VK_IMAGE_VIEW_TYPE_2D;
+    case VK_IMAGE_TYPE_3D:
+        return VK_IMAGE_VIEW_TYPE_3D;
+    default:
+        break;
+    }
+    log(Level::Error, "unsupported imageType: ", imageType);
+    ASSERT(false, "unsupported imageType");
+    return VK_IMAGE_VIEW_TYPE_2D;
+}
+
+uint32_t get2DImageSizeInBytes(VkExtent2D extent, VkFormat imageFormat)
+{
+    switch (imageFormat)
+    {
+    case VK_FORMAT_R8G8B8A8_UNORM:
+        return 4 * extent.width * extent.height;
+    default:
+        break;
+    }
+    log(Level::Error, "unsupported imageFormat: ", imageFormat);
+    ASSERT(false, "unsupported imageFormat");
+    return 1;
+}
+
+uint32_t get3DImageSizeInBytes(VkExtent3D extent, VkFormat imageFormat)
+{
+    switch (imageFormat)
+    {
+    case VK_FORMAT_R8G8B8A8_UNORM:
+        return 4 * extent.width * extent.height * extent.depth;
+    default:
+        break;
+    }
+    log(Level::Error, "unsupported imageFormat: ", imageFormat);
+    ASSERT(false, "unsupported imageFormat");
+    return 1;
 }

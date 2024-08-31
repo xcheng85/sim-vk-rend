@@ -226,9 +226,7 @@ private:
     uint32_t _numMeshes;
 
     // textures in the glb scene
-    std::vector<VkImage> _glbImages;
-    std::vector<VkImageView> _glbImageViews;
-    std::vector<VmaAllocation> _glbImageAllocation;
+    std::vector<std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat>> _glbImageEntities;
     std::vector<std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo>> _glbImageStagingBuffers;
 
     // samplers in the glb scene

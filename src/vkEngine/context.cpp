@@ -127,6 +127,15 @@ public:
 
     std::tuple<VkSampler> createSampler(const std::string &name);
 
+    void writeBuffer(
+        const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
+        const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &deviceLocalBuffer,
+        const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
+        const void *rawData,
+        uint32_t sizeInBytes,
+        uint32_t srcOffset = 0,
+        uint32_t dstOffset = 0);
+
     void writeImage(
         const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
         const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
@@ -1603,6 +1612,32 @@ std::tuple<VkSampler> VkContext::Impl::createSampler(const std::string &name)
     return make_tuple(sampler);
 }
 
+void VkContext::Impl::writeBuffer(
+    const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
+    const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &deviceLocalBuffer,
+    const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
+    const void *rawData,
+    uint32_t sizeInBytes,
+    uint32_t srcOffset,
+    uint32_t dstOffset)
+{
+    const auto stagingBufferHandle = std::get<0>(stagingBuffer);
+    const auto deviceLocalBufferHandle = std::get<0>(deviceLocalBuffer);
+    const auto vmaStagingImageBufferAllocation = std::get<1>(stagingBuffer);
+    const auto cmdBufferHandle = std::get<1>(cmdBuffer);
+
+    // copy vb from host to device, region
+    void *mappedMemory{nullptr};
+    VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingImageBufferAllocation, &mappedMemory));
+    memcpy(mappedMemory, rawData, sizeInBytes);
+    vmaUnmapMemory(_vmaAllocator, vmaStagingImageBufferAllocation);
+    // cmd to copy from staging to device
+    VkBufferCopy region{.srcOffset = srcOffset,
+                        .dstOffset = dstOffset,
+                        .size = sizeInBytes};
+    vkCmdCopyBuffer(cmdBufferHandle, stagingBufferHandle, deviceLocalBufferHandle, 1, &region);
+}
+
 void VkContext::Impl::writeImage(
     const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
     const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
@@ -1929,6 +1964,18 @@ std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkE
 std::tuple<VkSampler> VkContext::createSampler(const std::string &name)
 {
     return _pimpl->createSampler(name);
+}
+
+void VkContext::writeBuffer(
+    const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
+    const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &deviceLocalBuffer,
+    const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
+    const void *rawData,
+    uint32_t sizeInBytes,
+    uint32_t srcOffset,
+    uint32_t dstOffset)
+{
+    return _pimpl->writeBuffer(stagingBuffer, deviceLocalBuffer, cmdBuffer, rawData, sizeInBytes, srcOffset, dstOffset);
 }
 
 void VkContext::writeImage(

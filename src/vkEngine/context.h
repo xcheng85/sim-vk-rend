@@ -137,6 +137,15 @@ public:
 
     std::tuple<VkSampler> createSampler(const std::string &name);
 
+    void writeBuffer(
+        const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
+        const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &deviceLocalBuffer,
+        const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
+        const void *rawData,
+        uint32_t sizeInBytes,
+        uint32_t srcOffset = 0,
+        uint32_t dstOffset = 0);
+
     void writeImage(
         const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
         const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,

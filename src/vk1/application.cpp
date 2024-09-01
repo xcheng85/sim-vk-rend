@@ -14,6 +14,16 @@ static constexpr int MAX_DESCRIPTOR_SETS = 1 * MAX_FRAMES_IN_FLIGHT + 1 + 4;
 //  Default fence timeout in nanoseconds
 #define DEFAULT_FENCE_TIMEOUT 100000000000
 
+enum DESC_LAYOUT_SEMANTIC : int
+{
+    UBO = 0,
+    COMBO_VERT,
+    COMBO_IDR,
+    TEX_SAMP,
+    COMBO_MAT,
+    DESC_LAYOUT_SEMANTIC_SIZE
+};
+
 void VkApplication::init()
 {
     _ctx.createSwapChain();
@@ -251,190 +261,230 @@ void VkApplication::deleteSwapChain()
 // each set have one instance of layout
 void VkApplication::createDescriptorSetLayout()
 {
-    const auto logicalDevice = _ctx.getLogicDevice();
-    // be careful of the MAX_FLIGHT
-    // set0: one ubo in vs: layout (set = 0, binding = 0) uniform UBO (Yes, has MAX_FLIGHT)
-    // set1: one sampler2D in fs: layout (set = 1, binding = 0) uniform sampler2D samplerColor;
-    // set2: glb packed buffer: layout(set = 1, binding = 0) readonly buffer VertexBuffer
-    // set6: glb material combo buffer
+    std::vector<std::vector<VkDescriptorSetLayoutBinding>> setBindings(DESC_LAYOUT_SEMANTIC_SIZE);
 
-    // Descriptor binding flag VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT:
-    // This flag indicates that descriptor set does not need to have valid descriptors in them
-    // as long as the invalid descriptors are not accessed during shader execution.
+    setBindings[DESC_LAYOUT_SEMANTIC::UBO].resize(1);
+    setBindings[DESC_LAYOUT_SEMANTIC::UBO][0].binding = 0; // depends on the shader: set 0, binding = 0
+    setBindings[DESC_LAYOUT_SEMANTIC::UBO][0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    setBindings[DESC_LAYOUT_SEMANTIC::UBO][0].descriptorCount = 1;
+    setBindings[DESC_LAYOUT_SEMANTIC::UBO][0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-    constexpr VkDescriptorBindingFlags flagsToEnable = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-                                                       VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
-                                                       VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
-    {
-        // for set0: ubo with MAX_FLIGHTS
-        std::vector<VkDescriptorSetLayoutBinding> dsLayoutBindings(1);
-        dsLayoutBindings[0].binding = 0; // depends on the shader: set 0, binding = 0
-        dsLayoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        // array resource
-        dsLayoutBindings[0].descriptorCount = 1;
-        dsLayoutBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-        dsLayoutBindings[0].pImmutableSamplers = nullptr;
+    setBindings[DESC_LAYOUT_SEMANTIC::COMBO_VERT].resize(1);
+    setBindings[DESC_LAYOUT_SEMANTIC::COMBO_VERT][0].binding = 0; // depends on the shader: set 0, binding = 0
+    setBindings[DESC_LAYOUT_SEMANTIC::COMBO_VERT][0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    setBindings[DESC_LAYOUT_SEMANTIC::COMBO_VERT][0].descriptorCount = 1;
+    setBindings[DESC_LAYOUT_SEMANTIC::COMBO_VERT][0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        std::vector<VkDescriptorBindingFlags> bindFlags(dsLayoutBindings.size(), flagsToEnable);
-        const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-            .pNext = nullptr,
-            .bindingCount = static_cast<uint32_t>(dsLayoutBindings.size()),
-            .pBindingFlags = bindFlags.data(),
-        };
-        VkDescriptorSetLayoutCreateInfo layoutInfo{};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = dsLayoutBindings.size();
-        layoutInfo.pBindings = dsLayoutBindings.data();
-#if defined(_WIN32)
-        layoutInfo.pNext = &extendedInfo;
-        layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
-#endif
-        VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
-        VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr,
-                                             &descriptorSetLayout));
+    setBindings[DESC_LAYOUT_SEMANTIC::COMBO_IDR].resize(1);
+    setBindings[DESC_LAYOUT_SEMANTIC::COMBO_IDR][0].binding = 0; // depends on the shader: set 0, binding = 0
+    setBindings[DESC_LAYOUT_SEMANTIC::COMBO_IDR][0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    setBindings[DESC_LAYOUT_SEMANTIC::COMBO_IDR][0].descriptorCount = 1;
+    setBindings[DESC_LAYOUT_SEMANTIC::COMBO_IDR][0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        _descriptorSetLayouts.push_back(descriptorSetLayout);
-        _descriptorSetLayoutForUbo = descriptorSetLayout;
-    }
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP].resize(2);
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][0].binding = 0; // depends on the shader: set 0, binding = 0
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][0].descriptorCount = _glbImageEntities.size();
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    {
-        VkDescriptorSetLayoutBinding dsLayoutBindings{};
-        dsLayoutBindings.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        dsLayoutBindings.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        dsLayoutBindings.binding = 0;
-        dsLayoutBindings.descriptorCount = 1;
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][1].binding = 1; // depends on the shader: set 0, binding = 0
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][1].descriptorCount = 1;
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-            .pNext = nullptr,
-            .bindingCount = 1,
-            .pBindingFlags = &flagsToEnable,
-        };
+    setBindings[DESC_LAYOUT_SEMANTIC::COMBO_MAT].resize(1);
+    setBindings[DESC_LAYOUT_SEMANTIC::COMBO_MAT][0].binding = 0; // depends on the shader: set 0, binding = 0
+    setBindings[DESC_LAYOUT_SEMANTIC::COMBO_MAT][0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    setBindings[DESC_LAYOUT_SEMANTIC::COMBO_MAT][0].descriptorCount = 1;
+    setBindings[DESC_LAYOUT_SEMANTIC::COMBO_MAT][0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        VkDescriptorSetLayoutCreateInfo layoutInfo{};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = 1;
-        layoutInfo.pBindings = &dsLayoutBindings;
-#if defined(_WIN32)
-        layoutInfo.pNext = &extendedInfo;
-        layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
-#endif
+    _descriptorSetLayouts = _ctx.createDescriptorSetLayout(setBindings);
 
-        VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
-        VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr,
-                                             &descriptorSetLayout));
+    //     const auto logicalDevice = _ctx.getLogicDevice();
+    //     // be careful of the MAX_FLIGHT
+    //     // set0: one ubo in vs: layout (set = 0, binding = 0) uniform UBO (Yes, has MAX_FLIGHT)
+    //     // set1: one sampler2D in fs: layout (set = 1, binding = 0) uniform sampler2D samplerColor;
+    //     // set2: glb packed buffer: layout(set = 1, binding = 0) readonly buffer VertexBuffer
+    //     // set6: glb material combo buffer
 
-        _descriptorSetLayouts.push_back(descriptorSetLayout);
-        _descriptorSetLayoutForComboVertexBuffer = descriptorSetLayout;
-    }
+    //     // Descriptor binding flag VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT:
+    //     // This flag indicates that descriptor set does not need to have valid descriptors in them
+    //     // as long as the invalid descriptors are not accessed during shader execution.
 
-    {
-        // set3 ssbo: for glb indirectDrawBuffer
-        VkDescriptorSetLayoutBinding dsLayoutBindings{};
-        dsLayoutBindings.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        dsLayoutBindings.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        dsLayoutBindings.binding = 0;
-        dsLayoutBindings.descriptorCount = 1;
+    //     constexpr VkDescriptorBindingFlags flagsToEnable = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+    //                                                        VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
+    //                                                        VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+    //     {
+    //         // for set0: ubo with MAX_FLIGHTS
+    //         std::vector<VkDescriptorSetLayoutBinding> dsLayoutBindings(1);
+    //         dsLayoutBindings[0].binding = 0; // depends on the shader: set 0, binding = 0
+    //         dsLayoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    //         // array resource
+    //         dsLayoutBindings[0].descriptorCount = 1;
+    //         dsLayoutBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    //         dsLayoutBindings[0].pImmutableSamplers = nullptr;
 
-        const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-            .pNext = nullptr,
-            .bindingCount = 1,
-            .pBindingFlags = &flagsToEnable,
-        };
+    //         std::vector<VkDescriptorBindingFlags> bindFlags(dsLayoutBindings.size(), flagsToEnable);
+    //         const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
+    //             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+    //             .pNext = nullptr,
+    //             .bindingCount = static_cast<uint32_t>(dsLayoutBindings.size()),
+    //             .pBindingFlags = bindFlags.data(),
+    //         };
+    //         VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    //         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    //         layoutInfo.bindingCount = dsLayoutBindings.size();
+    //         layoutInfo.pBindings = dsLayoutBindings.data();
+    // #if defined(_WIN32)
+    //         layoutInfo.pNext = &extendedInfo;
+    //         layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
+    // #endif
+    //         VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
+    //         VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr,
+    //                                              &descriptorSetLayout));
 
-        VkDescriptorSetLayoutCreateInfo layoutInfo{};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = 1;
-        layoutInfo.pBindings = &dsLayoutBindings;
-#if defined(_WIN32)
-        layoutInfo.pNext = &extendedInfo;
-        layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
-#endif
+    //         _descriptorSetLayouts.push_back(descriptorSetLayout);
+    //         _descriptorSetLayoutForUbo = descriptorSetLayout;
+    //     }
 
-        VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
-        VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr,
-                                             &descriptorSetLayout));
-        _descriptorSetLayouts.push_back(descriptorSetLayout);
-        _descriptorSetLayoutForIndirectDrawBuffer = descriptorSetLayout;
-    }
+    //     {
+    //         std::vector<VkDescriptorSetLayoutBinding> dsLayoutBindings(1);
+    //         dsLayoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    //         dsLayoutBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    //         dsLayoutBindings[0].binding = 0;
+    //         dsLayoutBindings[0].descriptorCount = 1;
 
-    {
-        // set 5 bindless Textures and sampler for glb
-        // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER vs VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
-        std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings;
-        {
-            VkDescriptorSetLayoutBinding dsLayoutBinding{};
-            dsLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-            dsLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            dsLayoutBinding.binding = 0;
-            dsLayoutBinding.descriptorCount = _glbImageEntities.size();
-            setLayoutBindings.emplace_back(dsLayoutBinding);
-        }
-        {
-            VkDescriptorSetLayoutBinding dsLayoutBinding{};
-            dsLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-            dsLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            dsLayoutBinding.binding = 1;
-            dsLayoutBinding.descriptorCount = 1;
-            setLayoutBindings.emplace_back(dsLayoutBinding);
-        }
+    //         std::vector<VkDescriptorBindingFlags> bindFlags(dsLayoutBindings.size(), flagsToEnable);
+    //         const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
+    //             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+    //             .pNext = nullptr,
+    //             .bindingCount = static_cast<uint32_t>(dsLayoutBindings.size()),
+    //             .pBindingFlags = bindFlags.data(),
+    //         };
 
-        std::vector<VkDescriptorBindingFlags> bindFlags(setLayoutBindings.size(), flagsToEnable);
-        const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-            .pNext = nullptr,
-            .bindingCount = static_cast<uint32_t>(bindFlags.size()),
-            .pBindingFlags = bindFlags.data(),
-        };
+    //         VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    //         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    //         layoutInfo.bindingCount = dsLayoutBindings.size();
+    //         layoutInfo.pBindings = dsLayoutBindings.data();
+    // #if defined(_WIN32)
+    //         layoutInfo.pNext = &extendedInfo;
+    //         layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
+    // #endif
 
-        VkDescriptorSetLayoutCreateInfo layoutInfo{};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = 2;
-        layoutInfo.pBindings = setLayoutBindings.data();
-#if defined(_WIN32)
-        layoutInfo.pNext = &extendedInfo;
-        layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
-#endif
+    //         VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
+    //         VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr,
+    //                                              &descriptorSetLayout));
 
-        VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
-        VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr,
-                                             &descriptorSetLayout));
-        _descriptorSetLayouts.push_back(descriptorSetLayout);
-        _descriptorSetLayoutForTextureAndSampler = descriptorSetLayout;
-    }
+    //         _descriptorSetLayouts.push_back(descriptorSetLayout);
+    //         _descriptorSetLayoutForComboVertexBuffer = descriptorSetLayout;
+    //     }
 
-    {
-        // set5 ssbo: for glb material
-        VkDescriptorSetLayoutBinding dsLayoutBindings{};
-        dsLayoutBindings.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        dsLayoutBindings.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        dsLayoutBindings.binding = 0;
-        dsLayoutBindings.descriptorCount = 1;
+    //     {
+    //         // set3 ssbo: for glb indirectDrawBuffer
+    //         VkDescriptorSetLayoutBinding dsLayoutBindings{};
+    //         dsLayoutBindings.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    //         dsLayoutBindings.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    //         dsLayoutBindings.binding = 0;
+    //         dsLayoutBindings.descriptorCount = 1;
 
-        const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-            .pNext = nullptr,
-            .bindingCount = 1,
-            .pBindingFlags = &flagsToEnable,
-        };
+    //         const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
+    //             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+    //             .pNext = nullptr,
+    //             .bindingCount = 1,
+    //             .pBindingFlags = &flagsToEnable,
+    //         };
 
-        VkDescriptorSetLayoutCreateInfo layoutInfo{};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = 1;
-        layoutInfo.pBindings = &dsLayoutBindings;
-#if defined(_WIN32)
-        layoutInfo.pNext = &extendedInfo;
-        layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
-#endif
+    //         VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    //         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    //         layoutInfo.bindingCount = 1;
+    //         layoutInfo.pBindings = &dsLayoutBindings;
+    // #if defined(_WIN32)
+    //         layoutInfo.pNext = &extendedInfo;
+    //         layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
+    // #endif
 
-        VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
-        VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr,
-                                             &descriptorSetLayout));
-        _descriptorSetLayouts.push_back(descriptorSetLayout);
-        _descriptorSetLayoutForComboMaterialBuffer = descriptorSetLayout;
-    }
+    //         VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
+    //         VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr,
+    //                                              &descriptorSetLayout));
+    //         _descriptorSetLayouts.push_back(descriptorSetLayout);
+    //         _descriptorSetLayoutForIndirectDrawBuffer = descriptorSetLayout;
+    //     }
+
+    //     {
+    //         // set 5 bindless Textures and sampler for glb
+    //         // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER vs VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+    //         std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings;
+    //         {
+    //             VkDescriptorSetLayoutBinding dsLayoutBinding{};
+    //             dsLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    //             dsLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    //             dsLayoutBinding.binding = 0;
+    //             dsLayoutBinding.descriptorCount = _glbImageEntities.size();
+    //             setLayoutBindings.emplace_back(dsLayoutBinding);
+    //         }
+    //         {
+    //             VkDescriptorSetLayoutBinding dsLayoutBinding{};
+    //             dsLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    //             dsLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    //             dsLayoutBinding.binding = 1;
+    //             dsLayoutBinding.descriptorCount = 1;
+    //             setLayoutBindings.emplace_back(dsLayoutBinding);
+    //         }
+
+    //         std::vector<VkDescriptorBindingFlags> bindFlags(setLayoutBindings.size(), flagsToEnable);
+    //         const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
+    //             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+    //             .pNext = nullptr,
+    //             .bindingCount = static_cast<uint32_t>(bindFlags.size()),
+    //             .pBindingFlags = bindFlags.data(),
+    //         };
+
+    //         VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    //         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    //         layoutInfo.bindingCount = 2;
+    //         layoutInfo.pBindings = setLayoutBindings.data();
+    // #if defined(_WIN32)
+    //         layoutInfo.pNext = &extendedInfo;
+    //         layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
+    // #endif
+
+    //         VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
+    //         VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr,
+    //                                              &descriptorSetLayout));
+    //         _descriptorSetLayouts.push_back(descriptorSetLayout);
+    //         _descriptorSetLayoutForTextureAndSampler = descriptorSetLayout;
+    //     }
+
+    //     {
+    //         // set5 ssbo: for glb material
+    //         VkDescriptorSetLayoutBinding dsLayoutBindings{};
+    //         dsLayoutBindings.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    //         dsLayoutBindings.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    //         dsLayoutBindings.binding = 0;
+    //         dsLayoutBindings.descriptorCount = 1;
+
+    //         const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
+    //             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+    //             .pNext = nullptr,
+    //             .bindingCount = 1,
+    //             .pBindingFlags = &flagsToEnable,
+    //         };
+
+    //         VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    //         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    //         layoutInfo.bindingCount = 1;
+    //         layoutInfo.pBindings = &dsLayoutBindings;
+    // #if defined(_WIN32)
+    //         layoutInfo.pNext = &extendedInfo;
+    //         layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
+    // #endif
+
+    //         VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
+    //         VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr,
+    //                                              &descriptorSetLayout));
+    //         _descriptorSetLayouts.push_back(descriptorSetLayout);
+    //         _descriptorSetLayoutForComboMaterialBuffer = descriptorSetLayout;
+    //     }
 }
 
 // depends on your glsl
@@ -489,7 +539,7 @@ void VkApplication::allocateDescriptorSets()
             allocInfo.descriptorPool = _descriptorSetPool;
             // 3 ds for ubo
             allocInfo.descriptorSetCount = 1;
-            allocInfo.pSetLayouts = &_descriptorSetLayoutForUbo;
+            allocInfo.pSetLayouts = &_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::UBO];
             // VK_ERROR_OUT_OF_POOL_MEMORY_KHR = VK_ERROR_OUT_OF_POOL_MEMORY = -1000069000
             VK_CHECK(
                 vkAllocateDescriptorSets(logicalDevice, &allocInfo,
@@ -503,7 +553,7 @@ void VkApplication::allocateDescriptorSets()
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         allocInfo.descriptorPool = _descriptorSetPool;
         allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &_descriptorSetLayoutForComboVertexBuffer;
+        allocInfo.pSetLayouts = &_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::COMBO_VERT];
 
         VK_CHECK(
             vkAllocateDescriptorSets(logicalDevice, &allocInfo,
@@ -516,7 +566,7 @@ void VkApplication::allocateDescriptorSets()
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         allocInfo.descriptorPool = _descriptorSetPool;
         allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &_descriptorSetLayoutForIndirectDrawBuffer;
+        allocInfo.pSetLayouts = &_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::COMBO_IDR];
 
         VK_CHECK(
             vkAllocateDescriptorSets(logicalDevice, &allocInfo,
@@ -529,7 +579,7 @@ void VkApplication::allocateDescriptorSets()
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         allocInfo.descriptorPool = _descriptorSetPool;
         allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &_descriptorSetLayoutForTextureAndSampler;
+        allocInfo.pSetLayouts = &_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::TEX_SAMP];
 
         VK_CHECK(
             vkAllocateDescriptorSets(logicalDevice, &allocInfo,
@@ -542,7 +592,7 @@ void VkApplication::allocateDescriptorSets()
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         allocInfo.descriptorPool = _descriptorSetPool;
         allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &_descriptorSetLayoutForComboMaterialBuffer;
+        allocInfo.pSetLayouts = &_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::COMBO_MAT];
 
         VK_CHECK(
             vkAllocateDescriptorSets(logicalDevice, &allocInfo,
@@ -554,9 +604,6 @@ void VkApplication::createUniformBuffers()
 {
     VkDeviceSize bufferSize = sizeof(UniformDataDef1);
     _uniformBuffers.reserve(MAX_FRAMES_IN_FLIGHT);
-
-    // _vmaAllocations.resize(MAX_FRAMES_IN_FLIGHT);
-    // _vmaAllocationInfos.resize(MAX_FRAMES_IN_FLIGHT);
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {

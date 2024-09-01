@@ -137,6 +137,9 @@ public:
 
     std::tuple<VkSampler> createSampler(const std::string &name);
 
+    // uint32_t: set id 
+    std::vector<VkDescriptorSetLayout> createDescriptorSetLayout(std::vector<std::vector<VkDescriptorSetLayoutBinding>>& setBindings);
+
     void writeBuffer(
         const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
         const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &deviceLocalBuffer,

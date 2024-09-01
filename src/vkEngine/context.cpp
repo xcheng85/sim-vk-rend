@@ -127,6 +127,8 @@ public:
 
     std::tuple<VkSampler> createSampler(const std::string &name);
 
+    std::vector<VkDescriptorSetLayout> createDescriptorSetLayout(std::vector<std::vector<VkDescriptorSetLayoutBinding>> &setBindings);
+
     void writeBuffer(
         const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
         const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &deviceLocalBuffer,
@@ -1612,6 +1614,43 @@ std::tuple<VkSampler> VkContext::Impl::createSampler(const std::string &name)
     return make_tuple(sampler);
 }
 
+std::vector<VkDescriptorSetLayout> VkContext::Impl::createDescriptorSetLayout(
+    std::vector<std::vector<VkDescriptorSetLayoutBinding>> &setBindings)
+{
+    std::vector<VkDescriptorSetLayout> layouts;
+    layouts.reserve(setBindings.size());
+
+    // Descriptor binding flag VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT:
+    // This flag indicates that descriptor set does not need to have valid descriptors in them
+    // as long as the invalid descriptors are not accessed during shader execution.
+    constexpr VkDescriptorBindingFlags flagsToEnable = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+                                                       VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
+                                                       VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+    for (const auto &setBinding : setBindings)
+    {
+        std::vector<VkDescriptorBindingFlags> bindFlags(setBinding.size(), flagsToEnable);
+        const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+            .pNext = nullptr,
+            .bindingCount = static_cast<uint32_t>(bindFlags.size()),
+            .pBindingFlags = bindFlags.data(),
+        };
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = setBinding.size();
+        layoutInfo.pBindings = setBinding.data();
+#if defined(_WIN32)
+        layoutInfo.pNext = &extendedInfo;
+        layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
+#endif
+        VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
+        VK_CHECK(vkCreateDescriptorSetLayout(_logicalDevice, &layoutInfo, nullptr,
+                                             &descriptorSetLayout));
+        layouts.push_back(std::move(descriptorSetLayout));
+    }
+    return layouts;
+}
+
 void VkContext::Impl::writeBuffer(
     const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
     const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &deviceLocalBuffer,
@@ -1964,6 +2003,12 @@ std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkE
 std::tuple<VkSampler> VkContext::createSampler(const std::string &name)
 {
     return _pimpl->createSampler(name);
+}
+
+std::vector<VkDescriptorSetLayout> VkContext::createDescriptorSetLayout(
+    std::vector<std::vector<VkDescriptorSetLayoutBinding>> &setBindings)
+{
+    return _pimpl->createDescriptorSetLayout(setBindings);
 }
 
 void VkContext::writeBuffer(

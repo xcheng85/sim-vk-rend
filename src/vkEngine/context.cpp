@@ -125,6 +125,8 @@ public:
         VkMemoryPropertyFlags memoryFlags,
         bool generateMips);
 
+    std::tuple<VkSampler> createSampler(const std::string &name);
+
     void writeImage(
         const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
         const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
@@ -1567,6 +1569,40 @@ std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkE
                       extent, format);
 }
 
+std::tuple<VkSampler> VkContext::Impl::createSampler(const std::string &name)
+{
+    VkSampler sampler;
+    VkSamplerCreateInfo samplerCreateInfo = {};
+    samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
+    samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
+    samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+
+    samplerCreateInfo.mipLodBias = 0.0f;
+    samplerCreateInfo.compareOp = VK_COMPARE_OP_NEVER;
+    samplerCreateInfo.minLod = 0.0f;
+    samplerCreateInfo.maxLod = 10.f;
+    // Enable anisotropic filtering
+    if (VkContext::sPhysicalDeviceFeatures2.features.samplerAnisotropy)
+    {
+        // Use max. level of anisotropy for this example
+        samplerCreateInfo.maxAnisotropy = _physicalDevicesProp1.limits.maxSamplerAnisotropy;
+        samplerCreateInfo.anisotropyEnable = VK_TRUE;
+    }
+    else
+    {
+        samplerCreateInfo.maxAnisotropy = 1.0;
+        samplerCreateInfo.anisotropyEnable = VK_FALSE;
+    }
+    samplerCreateInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+    VK_CHECK(vkCreateSampler(_logicalDevice, &samplerCreateInfo, nullptr, &sampler));
+    setCorrlationId(sampler, _logicalDevice, VK_OBJECT_TYPE_SAMPLER, name);
+    return make_tuple(sampler);
+}
+
 void VkContext::Impl::writeImage(
     const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
     const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
@@ -1888,6 +1924,11 @@ std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkE
 {
     return _pimpl->createImage(name, imageType, format, extent, textureMipLevelCount,
                                textureLayersCount, textureMultiSampleCount, usage, memoryFlags, generateMips);
+}
+
+std::tuple<VkSampler> VkContext::createSampler(const std::string &name)
+{
+    return _pimpl->createSampler(name);
 }
 
 void VkContext::writeImage(

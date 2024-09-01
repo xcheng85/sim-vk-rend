@@ -119,9 +119,10 @@ void VkApplication::teardown()
         vmaDestroyImage(vmaAllocator, image, imageAllocation);
     }
 
-    for (size_t i = 0; i < _glbSamplers.size(); ++i)
+    for (const auto &samplerEntity : _glbSamplerEntities)
     {
-        vkDestroySampler(logicalDevice, _glbSamplers[i], nullptr);
+        const auto sampler = std::get<0>(samplerEntity);
+        vkDestroySampler(logicalDevice, sampler, nullptr);
     }
 
     vmaDestroyBuffer(vmaAllocator, std::get<0>(_compositeVB), std::get<1>(_compositeVB));
@@ -697,9 +698,10 @@ void VkApplication::bindResourceToDescriptorSets()
 
     // for glb samplers
     std::vector<VkDescriptorImageInfo> glbTextureSamplerInfos;
-    glbTextureSamplerInfos.reserve(_glbSamplers.size());
-    for (const auto &sampler : _glbSamplers)
+    glbTextureSamplerInfos.reserve(_glbSamplerEntities.size());
+    for (const auto &samplerEntity : _glbSamplerEntities)
     {
+        const auto sampler = std::get<0>(samplerEntity);
         glbTextureSamplerInfos.emplace_back(VkDescriptorImageInfo{
             .sampler = sampler,
             .imageView = VK_NULL_HANDLE,
@@ -1836,42 +1838,10 @@ void VkApplication::loadGLB()
 
             ++textureId;
         }
-        
+
         // sampler
         {
-            VkSampler sampler;
-            VkSamplerCreateInfo samplerCreateInfo = {};
-            samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-            samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
-            samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
-            samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-            samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-
-            samplerCreateInfo.mipLodBias = 0.0f;
-            samplerCreateInfo.compareOp = VK_COMPARE_OP_NEVER;
-            samplerCreateInfo.minLod = 0.0f;
-#if defined(LINEAR_TILED_IMAGES)
-            samplerCreateInfo.maxLod = 0.0f;
-#else
-            samplerCreateInfo.maxLod = 10.f;
-#endif
-            // Enable anisotropic filtering
-            if (VkContext::sPhysicalDeviceFeatures2.features.samplerAnisotropy)
-            {
-                // Use max. level of anisotropy for this example
-                samplerCreateInfo.maxAnisotropy = selectedPhysicalDeviceProp.limits.maxSamplerAnisotropy;
-                samplerCreateInfo.anisotropyEnable = VK_TRUE;
-            }
-            else
-            {
-                samplerCreateInfo.maxAnisotropy = 1.0;
-                samplerCreateInfo.anisotropyEnable = VK_FALSE;
-            }
-            samplerCreateInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
-            VK_CHECK(vkCreateSampler(logicalDevice, &samplerCreateInfo, nullptr, &sampler));
-            _glbSamplers.emplace_back(sampler);
+            _glbSamplerEntities.emplace_back(_ctx.createSampler("sampler0"));
         }
 
         // packing materials into composite buffer

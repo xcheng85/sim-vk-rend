@@ -230,5 +230,5 @@ private:
     std::vector<std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo>> _glbImageStagingBuffers;
 
     // samplers in the glb scene
-    std::vector<VkSampler> _glbSamplers;
+    std::vector<std::tuple<VkSampler>> _glbSamplerEntities;
 };

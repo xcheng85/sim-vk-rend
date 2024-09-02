@@ -490,35 +490,28 @@ void VkApplication::createDescriptorSetLayout()
 // depends on your glsl
 void VkApplication::createDescriptorPool()
 {
-    const auto logicalDevice = _ctx.getLogicDevice();
-    // here I need 4 type of descriptors
-    // layout (set = 0, binding = 0) uniform UBO
-    // layout (set = 1, binding = 0) readonly buffer VertexBuffer;
-    // layout (set = 2, binding = 0) readonly buffer IndirectDraw;
-    // layout(set = 3, binding = 0) uniform texture2D BindlessImage2D[];
-    // layout(set = 3, binding = 1) uniform sampler BindlessSampler[];
-    // layout (set = 4, binding = 0) readonly buffer MaterialBuffer;
-
-    std::vector<VkDescriptorPoolSize> descriptorPoolSizes(4);
-    // poolSize.descriptorCount = static_cast<uint32_t>(MAX_DESCRIPTOR_SETS);
-    descriptorPoolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    descriptorPoolSizes[0].descriptorCount = 1 * MAX_FRAMES_IN_FLIGHT;
-    descriptorPoolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    descriptorPoolSizes[1].descriptorCount = 10;
-    descriptorPoolSizes[2].type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-    descriptorPoolSizes[2].descriptorCount = 10;
-    descriptorPoolSizes[3].type = VK_DESCRIPTOR_TYPE_SAMPLER;
-    descriptorPoolSizes[3].descriptorCount = 10;
-
-    VkDescriptorPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT |
-                     VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
-    poolInfo.poolSizeCount = descriptorPoolSizes.size();
-    poolInfo.pPoolSizes = descriptorPoolSizes.data();
-    poolInfo.maxSets = static_cast<uint32_t>(100);
-
-    VK_CHECK(vkCreateDescriptorPool(logicalDevice, &poolInfo, nullptr, &_descriptorSetPool));
+    _descriptorSetPool = _ctx.createDescriptorSetPool({
+        {
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, MAX_FRAMES_IN_FLIGHT
+        },
+        {
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10
+        },
+        {
+            VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 10
+        },
+        {
+            VK_DESCRIPTOR_TYPE_SAMPLER, 10
+        }
+    }, 100);
+    // const auto logicalDevice = _ctx.getLogicDevice();
+    // // here I need 4 type of descriptors
+    // // layout (set = 0, binding = 0) uniform UBO
+    // // layout (set = 1, binding = 0) readonly buffer VertexBuffer;
+    // // layout (set = 2, binding = 0) readonly buffer IndirectDraw;
+    // // layout(set = 3, binding = 0) uniform texture2D BindlessImage2D[];
+    // // layout(set = 3, binding = 1) uniform sampler BindlessSampler[];
+    // // layout (set = 4, binding = 0) readonly buffer MaterialBuffer;
 }
 
 void VkApplication::allocateDescriptorSets()

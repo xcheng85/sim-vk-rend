@@ -135,25 +135,11 @@ private:
     // refactoring to use _descriptorSetLayout per set
     // 0: ubo, 1: texture + sampler, 2: glb: ssbo
     std::vector<VkDescriptorSetLayout> _descriptorSetLayouts;
-    
-    // VkDescriptorSetLayout _descriptorSetLayoutForUbo;
-    // // // combined textures and sampler
-    // // VkDescriptorSetLayout _descriptorSetLayoutForTextureSampler;
-    // // for vb
-    // VkDescriptorSetLayout _descriptorSetLayoutForComboVertexBuffer;
-    // // for indirectDrawBuffer
-    // VkDescriptorSetLayout _descriptorSetLayoutForIndirectDrawBuffer;
-    // // for glb textures + sampler (binding1 and binding2)
-    // VkDescriptorSetLayout _descriptorSetLayoutForTextureAndSampler;
-    // // for glb samplers
-    // // VkDescriptorSetLayout _descriptorSetLayoutForSamplers;
-    // // for glb materials
-    // VkDescriptorSetLayout _descriptorSetLayoutForComboMaterialBuffer;
 
     VkDescriptorPool _descriptorSetPool{VK_NULL_HANDLE};
     // why vector ? triple-buffer
     std::vector<VkDescriptorSet> _descriptorSetsForUbo;
-    VkDescriptorSet _descriptorSetsForTextureSampler;
+    // VkDescriptorSet _descriptorSetsForTextureSampler;
     // for vb
     VkDescriptorSet _descriptorSetsForVerticesBuffer;
     // for indirectDrawBuffer
@@ -164,6 +150,7 @@ private:
     // VkDescriptorSet _descriptorSetsForSampler;
     // for glb materials
     VkDescriptorSet _descriptorSetsForMaterialBuffer;
+
     // for bind resource to descriptor sets
     std::vector<VkWriteDescriptorSet> _writeDescriptorSetBundle;
 

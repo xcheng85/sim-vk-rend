@@ -11,24 +11,24 @@
 #include <vulkan/vulkan.h>
 #endif
 
-#include <array>
-#include <fstream>
-#include <map>
-#include <optional>
-#include <set>
+#include <iostream>
 #include <sstream>
+#include <fstream>
+#include <array>
+#include <vector>
+#include <map>
+#include <unordered_map>
+#include <set>
 #include <string>
 #include <vector>
+#include <optional>
 #include <numeric>
 #include <assert.h>
-#include <iostream>
 #include <format>
-#include <vector>
 #include <utility>
 #include <algorithm>
 #include <iterator>
 #include <numeric>
-#include <array>
 #include <filesystem> // for shader
 
 // must ahead of <vk_mem_alloc.h>, or else it will crash on vk functions
@@ -137,8 +137,18 @@ public:
 
     std::tuple<VkSampler> createSampler(const std::string &name);
 
-    // uint32_t: set id 
-    std::vector<VkDescriptorSetLayout> createDescriptorSetLayout(std::vector<std::vector<VkDescriptorSetLayoutBinding>>& setBindings);
+    // uint32_t: set id
+    std::vector<VkDescriptorSetLayout> createDescriptorSetLayout(std::vector<std::vector<VkDescriptorSetLayoutBinding>> &setBindings);
+
+    VkDescriptorPool createDescriptorSetPool(
+        const std::unordered_map<VkDescriptorType, uint32_t> &dsBudgets,
+        uint32_t dsCap = 100);
+
+    // std::vector<std::vector<VkDescriptorSet>> allocateDescriptorSet(
+    //     VkDescriptorPool* pool,
+    //     const std::vector<VkDescriptorSetLayout>& dsLayouts,
+    //     const std::vector<std::tuple<DESC_LAYOUT_SEMANTIC, uint32_t>>& allocationBudget
+    //     );
 
     void writeBuffer(
         const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,

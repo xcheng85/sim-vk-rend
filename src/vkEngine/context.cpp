@@ -129,6 +129,10 @@ public:
 
     std::vector<VkDescriptorSetLayout> createDescriptorSetLayout(std::vector<std::vector<VkDescriptorSetLayoutBinding>> &setBindings);
 
+    VkDescriptorPool createDescriptorSetPool(
+        const std::unordered_map<VkDescriptorType, uint32_t> &dsBudgets,
+        uint32_t dsCap);
+
     void writeBuffer(
         const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
         const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &deviceLocalBuffer,
@@ -1651,6 +1655,36 @@ std::vector<VkDescriptorSetLayout> VkContext::Impl::createDescriptorSetLayout(
     return layouts;
 }
 
+VkDescriptorPool VkContext::Impl::createDescriptorSetPool(
+    const std::unordered_map<VkDescriptorType, uint32_t> &dsBudgets,
+    uint32_t dsCap)
+{
+    VkDescriptorPool descriptorSetPool{VK_NULL_HANDLE};
+
+    std::vector<VkDescriptorPoolSize> descriptorPoolSizes;
+    descriptorPoolSizes.reserve(dsBudgets.size());
+
+    for (const auto &[dsType, dsCt] : dsBudgets)
+    {
+        descriptorPoolSizes.push_back(
+            VkDescriptorPoolSize{
+                .type = dsType,
+                .descriptorCount = dsCt,
+            });
+    }
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT |
+                     VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
+    poolInfo.poolSizeCount = descriptorPoolSizes.size();
+    poolInfo.pPoolSizes = descriptorPoolSizes.data();
+    poolInfo.maxSets = dsCap;
+
+    VK_CHECK(vkCreateDescriptorPool(_logicalDevice, &poolInfo, nullptr, &descriptorSetPool));
+    return descriptorSetPool;
+}
+
 void VkContext::Impl::writeBuffer(
     const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
     const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &deviceLocalBuffer,
@@ -2009,6 +2043,13 @@ std::vector<VkDescriptorSetLayout> VkContext::createDescriptorSetLayout(
     std::vector<std::vector<VkDescriptorSetLayoutBinding>> &setBindings)
 {
     return _pimpl->createDescriptorSetLayout(setBindings);
+}
+
+VkDescriptorPool VkContext::createDescriptorSetPool(
+    const std::unordered_map<VkDescriptorType, uint32_t> &dsBudgets,
+    uint32_t dsCap)
+{
+    return _pimpl->createDescriptorSetPool(dsBudgets, dsCap);
 }
 
 void VkContext::writeBuffer(

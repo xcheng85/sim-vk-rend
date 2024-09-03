@@ -144,11 +144,9 @@ public:
         const std::unordered_map<VkDescriptorType, uint32_t> &dsBudgets,
         uint32_t dsCap = 100);
 
-    // std::vector<std::vector<VkDescriptorSet>> allocateDescriptorSet(
-    //     VkDescriptorPool* pool,
-    //     const std::vector<VkDescriptorSetLayout>& dsLayouts,
-    //     const std::vector<std::tuple<DESC_LAYOUT_SEMANTIC, uint32_t>>& allocationBudget
-    //     );
+    std::unordered_map<VkDescriptorSetLayout*, std::vector<VkDescriptorSet>> allocateDescriptorSet(
+        const VkDescriptorPool pool,
+        const std::unordered_map<VkDescriptorSetLayout *, uint32_t> &dsAllocation);
 
     void writeBuffer(
         const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,

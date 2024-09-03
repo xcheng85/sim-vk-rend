@@ -137,28 +137,9 @@ private:
     std::vector<VkDescriptorSetLayout> _descriptorSetLayouts;
 
     VkDescriptorPool _descriptorSetPool{VK_NULL_HANDLE};
-    // why vector ? triple-buffer
-    std::vector<VkDescriptorSet> _descriptorSetsForUbo;
-    // VkDescriptorSet _descriptorSetsForTextureSampler;
-    // for vb
-    VkDescriptorSet _descriptorSetsForVerticesBuffer;
-    // for indirectDrawBuffer
-    VkDescriptorSet _descriptorSetsForIndirectDrawBuffer;
-    // for glb textures
-    VkDescriptorSet _descriptorSetsForTextureAndSampler;
-    // for glb samplers
-    // VkDescriptorSet _descriptorSetsForSampler;
-    // for glb materials
-    VkDescriptorSet _descriptorSetsForMaterialBuffer;
-
-    // for bind resource to descriptor sets
-    std::vector<VkWriteDescriptorSet> _writeDescriptorSetBundle;
+    std::unordered_map<VkDescriptorSetLayout*, std::vector<VkDescriptorSet>> _descriptorSets;
 
     // resource
-    // to implement in entity Buffer.
-    // std::vector<VkBuffer> _uniformBuffers;
-    // std::vector<VmaAllocation> _vmaAllocations;
-    // std::vector<VmaAllocationInfo> _vmaAllocationInfos;
     std::vector<std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo>> _uniformBuffers;
 
     // graphics pipeline

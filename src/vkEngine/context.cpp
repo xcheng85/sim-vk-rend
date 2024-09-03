@@ -133,6 +133,10 @@ public:
         const std::unordered_map<VkDescriptorType, uint32_t> &dsBudgets,
         uint32_t dsCap);
 
+    std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> allocateDescriptorSet(
+        const VkDescriptorPool pool,
+        const std::unordered_map<VkDescriptorSetLayout *, uint32_t> &dsAllocation);
+
     void writeBuffer(
         const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
         const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &deviceLocalBuffer,
@@ -1685,6 +1689,34 @@ VkDescriptorPool VkContext::Impl::createDescriptorSetPool(
     return descriptorSetPool;
 }
 
+std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> VkContext::Impl::allocateDescriptorSet(
+    const VkDescriptorPool descriptorPool,
+    const std::unordered_map<VkDescriptorSetLayout *, uint32_t> &dsAllocation)
+{
+    std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> allocatedDescriptorSets;
+    allocatedDescriptorSets.reserve(dsAllocation.size());
+
+    for (const auto &[dsLayout, dsAllocationCt] : dsAllocation)
+    {
+        std::vector<VkDescriptorSet> descriptorSets;
+        descriptorSets.reserve(dsAllocationCt);
+        for (int i = 0; i < dsAllocationCt; ++i)
+        {
+            VkDescriptorSetAllocateInfo allocInfo{};
+            VkDescriptorSet ds;
+            allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            allocInfo.descriptorPool = descriptorPool;
+            allocInfo.descriptorSetCount = 1;
+            allocInfo.pSetLayouts = dsLayout;
+            // VK_ERROR_OUT_OF_POOL_MEMORY_KHR = VK_ERROR_OUT_OF_POOL_MEMORY = -1000069000
+            VK_CHECK(vkAllocateDescriptorSets(_logicalDevice, &allocInfo, &ds));
+            descriptorSets.emplace_back(ds);
+        }
+        allocatedDescriptorSets.emplace(make_pair(dsLayout, descriptorSets));
+    }
+    return allocatedDescriptorSets;
+}
+
 void VkContext::Impl::writeBuffer(
     const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
     const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &deviceLocalBuffer,
@@ -2050,6 +2082,13 @@ VkDescriptorPool VkContext::createDescriptorSetPool(
     uint32_t dsCap)
 {
     return _pimpl->createDescriptorSetPool(dsBudgets, dsCap);
+}
+
+std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> VkContext::allocateDescriptorSet(
+    const VkDescriptorPool pool,
+    const std::unordered_map<VkDescriptorSetLayout *, uint32_t> &dsAllocation)
+{
+    return _pimpl->allocateDescriptorSet(pool, dsAllocation);
 }
 
 void VkContext::writeBuffer(

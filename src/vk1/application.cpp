@@ -579,30 +579,15 @@ void VkApplication::bindResourceToDescriptorSets()
     // 2. ssbo for indirectdraw
     // 3. textures + samplers
     // 4. ssbo for materials
-
-    // uint32_t writeDescriptorSetCount{MAX_FRAMES_IN_FLIGHT + 4};
-    // _writeDescriptorSetBundle.reserve(writeDescriptorSetCount);
-
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
-        VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = std::get<0>(_uniformBuffers[i]);
-        bufferInfo.offset = 0;
-        bufferInfo.range = sizeof(UniformDataDef1);
-
-        const auto bindResToDsPayload = VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = _descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::UBO]][i],
-            .dstBinding = 0,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .pImageInfo = nullptr,
-            .pBufferInfo = &bufferInfo,
-            .pTexelBufferView = VK_NULL_HANDLE,
-        };
-        // update immediately to avoid &bufferInfo becoming dangling pointer
-        vkUpdateDescriptorSets(logicalDevice, 1, &bindResToDsPayload, 0, nullptr);
+        _ctx.bindBufferToDescriptorSet(
+            std::get<0>(_uniformBuffers[i]),
+            0,
+            sizeof(UniformDataDef1),
+            _descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::UBO]][i],
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            0);
     }
 
     // for glb's vb
@@ -610,23 +595,13 @@ void VkApplication::bindResourceToDescriptorSets()
         const auto dstSets = _descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::COMBO_VERT]];
         ASSERT(dstSets.size() == 1, "COMBO_VERT descriptor set size is 1");
 
-        VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = std::get<0>(_compositeVB);
-        bufferInfo.offset = 0;
-        bufferInfo.range = _compositeVBSizeInByte;
-
-        const auto bindResToDsPayload = VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = dstSets[0],
-            .dstBinding = 0,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .pImageInfo = nullptr,
-            .pBufferInfo = &bufferInfo,
-        };
-        // update immediately to avoid &bufferInfo becoming dangling pointer
-        vkUpdateDescriptorSets(logicalDevice, 1, &bindResToDsPayload, 0, nullptr);
+        _ctx.bindBufferToDescriptorSet(
+            std::get<0>(_compositeVB),
+            0,
+            _compositeVBSizeInByte,
+            dstSets[0],
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            0);
     }
 
     // glb indirect draw
@@ -634,23 +609,13 @@ void VkApplication::bindResourceToDescriptorSets()
         const auto dstSets = _descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::COMBO_IDR]];
         ASSERT(dstSets.size() == 1, "COMBO_IDR descriptor set size is 1");
 
-        VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = std::get<0>(_indirectDrawB);
-        bufferInfo.offset = 0;
-        bufferInfo.range = _indirectDrawBSizeInByte;
-
-        const auto bindResToDsPayload = VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = dstSets[0],
-            .dstBinding = 0,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .pImageInfo = nullptr,
-            .pBufferInfo = &bufferInfo,
-        };
-        // update immediately to avoid &bufferInfo becoming dangling pointer
-        vkUpdateDescriptorSets(logicalDevice, 1, &bindResToDsPayload, 0, nullptr);
+        _ctx.bindBufferToDescriptorSet(
+            std::get<0>(_indirectDrawB),
+            0,
+            _indirectDrawBSizeInByte,
+            dstSets[0],
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            0);
     }
 
     {
@@ -658,57 +623,33 @@ void VkApplication::bindResourceToDescriptorSets()
         const auto dstSets = _descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::TEX_SAMP]];
         ASSERT(dstSets.size() == 1, "TEX_SAMP descriptor set size is 1");
 
-        std::vector<VkDescriptorImageInfo> glbTextureImageInfos;
-        glbTextureImageInfos.reserve(_glbImageEntities.size());
-        for (const auto &imageEntity : _glbImageEntities)
-        {
-            const auto imageView = std::get<1>(imageEntity);
-            glbTextureImageInfos.emplace_back(VkDescriptorImageInfo{
-                .sampler = VK_NULL_HANDLE,
-                .imageView = imageView,
-                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            });
-        }
+        std::vector<VkImageView> imageViews;
+        std::transform(_glbImageEntities.begin(), _glbImageEntities.end(),
+                       std::back_inserter(imageViews),
+                       [](const auto &imageEntity)
+                       {
+                           return std::get<1>(imageEntity);
+                       });
 
-        // pay attention to the scope of pointer imageInfos.data()
-        auto bindResToDsPayload = VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = dstSets[0],
-            .dstBinding = 0,
-            .dstArrayElement = 0,
-            .descriptorCount = static_cast<uint32_t>(glbTextureImageInfos.size()),
-            .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-            .pImageInfo = glbTextureImageInfos.data(),
-            .pBufferInfo = nullptr,
-        };
-        // update immediately to avoid &bufferInfo becoming dangling pointer
-        vkUpdateDescriptorSets(logicalDevice, 1, &bindResToDsPayload, 0, nullptr);
-
+        _ctx.bindTextureToDescriptorSet(
+            imageViews,
+            dstSets[0],
+            VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+            0);
+            
         // for glb samplers
-        std::vector<VkDescriptorImageInfo> glbTextureSamplerInfos;
-        glbTextureSamplerInfos.reserve(_glbSamplerEntities.size());
-        for (const auto &samplerEntity : _glbSamplerEntities)
-        {
-            const auto sampler = std::get<0>(samplerEntity);
-            glbTextureSamplerInfos.emplace_back(VkDescriptorImageInfo{
-                .sampler = sampler,
-                .imageView = VK_NULL_HANDLE,
-                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            });
-        }
-
-        bindResToDsPayload = VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = dstSets[0],
-            .dstBinding = 1,
-            .dstArrayElement = 0,
-            .descriptorCount = static_cast<uint32_t>(glbTextureSamplerInfos.size()),
-            .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
-            .pImageInfo = glbTextureSamplerInfos.data(),
-            .pBufferInfo = nullptr,
-        };
-        // update immediately to avoid &bufferInfo becoming dangling pointer
-        vkUpdateDescriptorSets(logicalDevice, 1, &bindResToDsPayload, 0, nullptr);
+        std::vector<VkSampler> imageSamplers;
+        std::transform(_glbSamplerEntities.begin(), _glbSamplerEntities.end(),
+                       std::back_inserter(imageSamplers),
+                       [](const auto &samplerEntity)
+                       {
+                           return std::get<0>(samplerEntity);
+                       });
+        _ctx.bindSamplerToDescriptorSet(
+            imageSamplers,
+            dstSets[0],
+            VK_DESCRIPTOR_TYPE_SAMPLER,
+            1);
     }
 
     {
@@ -716,23 +657,13 @@ void VkApplication::bindResourceToDescriptorSets()
         const auto dstSets = _descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::COMBO_MAT]];
         ASSERT(dstSets.size() == 1, "COMBO_MAT descriptor set size is 1");
 
-        VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = std::get<0>(_compositeMatB);
-        bufferInfo.offset = 0;
-        bufferInfo.range = _compositeMatBSizeInByte;
-
-        const auto bindResToDsPayload = VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = dstSets[0],
-            .dstBinding = 0,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .pImageInfo = nullptr,
-            .pBufferInfo = &bufferInfo,
-        };
-        // update immediately to avoid &bufferInfo becoming dangling pointer
-        vkUpdateDescriptorSets(logicalDevice, 1, &bindResToDsPayload, 0, nullptr);
+        _ctx.bindBufferToDescriptorSet(
+            std::get<0>(_compositeMatB),
+            0,
+            _compositeMatBSizeInByte,
+            dstSets[0],
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            0);
     }
     // // Validation Error: [ VUID-VkWriteDescriptorSet-descriptorType-00325 ] Object 0: handle = 0xd10d270000000018, type = VK_OBJECT_TYPE_DESCRIPTOR_SET; Object 1: handle = 0x7fc177270ab3, type = VK_OBJECT_TYPE_SAMPLER; | MessageID = 0xce76343a | vkUpdateDescriptorSets(): pDescriptorWrites[7] Attempted write update to sampler descriptor with invalid sample (VkSampler 0x7fc177270ab3[]).
     // //  The Vulkan spec states: If descriptorType is VK_DESCRIPTOR_TYPE_SAMPLER or VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,

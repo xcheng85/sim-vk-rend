@@ -137,6 +137,26 @@ public:
         const VkDescriptorPool pool,
         const std::unordered_map<VkDescriptorSetLayout *, uint32_t> &dsAllocation);
 
+    void bindBufferToDescriptorSet(
+        const VkBuffer bufferHandle,
+        VkDeviceSize offset,
+        VkDeviceSize sizeInBytes,
+        VkDescriptorSet descriptorSetToBind,
+        VkDescriptorType descriptorSetType,
+        uint32_t descriptorSetBindingPoint);
+
+    void bindTextureToDescriptorSet(
+        const std::vector<VkImageView> &imageViews,
+        VkDescriptorSet descriptorSetToBind,
+        VkDescriptorType descriptorSetType,
+        uint32_t descriptorSetBindingPoint);
+
+    void bindSamplerToDescriptorSet(
+        const std::vector<VkSampler> &samplers,
+        VkDescriptorSet descriptorSetToBind,
+        VkDescriptorType descriptorSetType,
+        uint32_t descriptorSetBindingPoint);
+
     void writeBuffer(
         const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
         const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &deviceLocalBuffer,
@@ -1717,6 +1737,98 @@ std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> VkCont
     return allocatedDescriptorSets;
 }
 
+void VkContext::Impl::bindBufferToDescriptorSet(
+    const VkBuffer bufferHandle,
+    VkDeviceSize offset,
+    VkDeviceSize sizeInBytes,
+    VkDescriptorSet descriptorSetToBind,
+    VkDescriptorType descriptorSetType,
+    uint32_t descriptorSetBindingPoint)
+{
+    VkDescriptorBufferInfo bufferInfo{};
+    bufferInfo.buffer = bufferHandle;
+    bufferInfo.offset = offset;
+    bufferInfo.range = sizeInBytes;
+
+    const auto bindResToDsPayload = VkWriteDescriptorSet{
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = descriptorSetToBind,
+        .dstBinding = descriptorSetBindingPoint,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType = descriptorSetType,
+        .pImageInfo = nullptr,
+        .pBufferInfo = &bufferInfo,
+        .pTexelBufferView = VK_NULL_HANDLE,
+    };
+    // update immediately to avoid &bufferInfo becoming dangling pointer
+    vkUpdateDescriptorSets(_logicalDevice, 1, &bindResToDsPayload, 0, nullptr);
+}
+
+void VkContext::Impl::bindTextureToDescriptorSet(
+    const std::vector<VkImageView> &imageViews,
+    VkDescriptorSet descriptorSetToBind,
+    VkDescriptorType descriptorSetType,
+    uint32_t descriptorSetBindingPoint)
+{
+    std::vector<VkDescriptorImageInfo> descImageInfos;
+    descImageInfos.reserve(imageViews.size());
+    for (const auto &imageView : imageViews)
+    {
+        descImageInfos.emplace_back(VkDescriptorImageInfo{
+            .sampler = VK_NULL_HANDLE,
+            .imageView = imageView,
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        });
+    }
+
+    // pay attention to the scope of pointer imageInfos.data()
+    auto bindResToDsPayload = VkWriteDescriptorSet{
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = descriptorSetToBind,
+        .dstBinding = descriptorSetBindingPoint,
+        .dstArrayElement = 0,
+        .descriptorCount = static_cast<uint32_t>(descImageInfos.size()),
+        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+        .pImageInfo = descImageInfos.data(),
+        .pBufferInfo = nullptr,
+    };
+    // update immediately to avoid &bufferInfo becoming dangling pointer
+    vkUpdateDescriptorSets(_logicalDevice, 1, &bindResToDsPayload, 0, nullptr);
+}
+
+void VkContext::Impl::bindSamplerToDescriptorSet(
+    const std::vector<VkSampler> &samplers,
+    VkDescriptorSet descriptorSetToBind,
+    VkDescriptorType descriptorSetType,
+    uint32_t descriptorSetBindingPoint)
+{
+    // for glb samplers
+    std::vector<VkDescriptorImageInfo> descImageInfos;
+    descImageInfos.reserve(samplers.size());
+    for (const auto &sampler : samplers)
+    {
+        descImageInfos.emplace_back(VkDescriptorImageInfo{
+            .sampler = sampler,
+            .imageView = VK_NULL_HANDLE,
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        });
+    }
+
+    auto bindResToDsPayload = VkWriteDescriptorSet{
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = descriptorSetToBind,
+        .dstBinding = descriptorSetBindingPoint,
+        .dstArrayElement = 0,
+        .descriptorCount = static_cast<uint32_t>(descImageInfos.size()),
+        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
+        .pImageInfo = descImageInfos.data(),
+        .pBufferInfo = nullptr,
+    };
+    // update immediately to avoid &bufferInfo becoming dangling pointer
+    vkUpdateDescriptorSets(_logicalDevice, 1, &bindResToDsPayload, 0, nullptr);
+}
+
 void VkContext::Impl::writeBuffer(
     const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
     const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &deviceLocalBuffer,
@@ -2089,6 +2201,36 @@ std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> VkCont
     const std::unordered_map<VkDescriptorSetLayout *, uint32_t> &dsAllocation)
 {
     return _pimpl->allocateDescriptorSet(pool, dsAllocation);
+}
+
+void VkContext::bindBufferToDescriptorSet(
+    const VkBuffer bufferHandle,
+    VkDeviceSize offset,
+    VkDeviceSize sizeInBytes,
+    VkDescriptorSet descriptorSetToBind,
+    VkDescriptorType descriptorSetType,
+    uint32_t descriptorSetBindingPoint)
+{
+    return _pimpl->bindBufferToDescriptorSet(bufferHandle, offset, sizeInBytes, descriptorSetToBind,
+                                             descriptorSetType, descriptorSetBindingPoint);
+}
+
+void VkContext::bindTextureToDescriptorSet(
+    const std::vector<VkImageView> &imageViews,
+    VkDescriptorSet descriptorSetToBind,
+    VkDescriptorType descriptorSetType,
+    uint32_t descriptorSetBindingPoint)
+{
+    return _pimpl->bindTextureToDescriptorSet(imageViews, descriptorSetToBind, descriptorSetType, descriptorSetBindingPoint);
+}
+
+void VkContext::bindSamplerToDescriptorSet(
+    const std::vector<VkSampler> &samplers,
+    VkDescriptorSet descriptorSetToBind,
+    VkDescriptorType descriptorSetType,
+    uint32_t descriptorSetBindingPoint)
+{
+    return _pimpl->bindSamplerToDescriptorSet(samplers, descriptorSetToBind, descriptorSetType, descriptorSetBindingPoint);
 }
 
 void VkContext::writeBuffer(

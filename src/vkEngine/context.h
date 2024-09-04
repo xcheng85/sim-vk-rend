@@ -144,9 +144,29 @@ public:
         const std::unordered_map<VkDescriptorType, uint32_t> &dsBudgets,
         uint32_t dsCap = 100);
 
-    std::unordered_map<VkDescriptorSetLayout*, std::vector<VkDescriptorSet>> allocateDescriptorSet(
+    std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> allocateDescriptorSet(
         const VkDescriptorPool pool,
         const std::unordered_map<VkDescriptorSetLayout *, uint32_t> &dsAllocation);
+
+    void bindBufferToDescriptorSet(
+        const VkBuffer bufferHandle,
+        VkDeviceSize offset,
+        VkDeviceSize sizeInBytes,
+        VkDescriptorSet descriptorSetToBind,
+        VkDescriptorType descriptorSetType,
+        uint32_t descriptorSetBindingPoint = 0);
+
+    void bindTextureToDescriptorSet(
+        const std::vector<VkImageView> &imageViews,
+        VkDescriptorSet descriptorSetToBind,
+        VkDescriptorType descriptorSetType,
+        uint32_t descriptorSetBindingPoint = 0);
+
+    void bindSamplerToDescriptorSet(
+        const std::vector<VkSampler> &samplers,
+        VkDescriptorSet descriptorSetToBind,
+        VkDescriptorType descriptorSetType,
+        uint32_t descriptorSetBindingPoint = 0);
 
     void writeBuffer(
         const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,

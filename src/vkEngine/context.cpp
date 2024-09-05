@@ -99,6 +99,9 @@ public:
         uint32_t inflightCount,
         VkFenceCreateFlags flags);
 
+    void BeginRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer);
+    void EndRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer);
+
     std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> createPersistentBuffer(
         const std::string &name,
         VkDeviceSize bufferSizeInBytes,
@@ -1456,6 +1459,30 @@ std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl
     return res;
 }
 
+void VkContext::Impl::BeginRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBufferEntity)
+{
+    const auto cmdBufferHandle = std::get<1>(cmdBufferEntity);
+    const auto fenceHandle = std::get<2>(cmdBufferEntity);
+
+    if (fenceHandle)
+        VK_CHECK(vkWaitForFences(_logicalDevice, 1, &fenceHandle, true, UINT32_MAX));
+    // specifies that most or all memory resources currently owned by the command buffer should be returned to the parent command pool
+    VK_CHECK(vkResetCommandBuffer(cmdBufferHandle, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT));
+
+    VkCommandBufferBeginInfo cmdBufferBeginInfo{};
+    cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    //  specifies that each recording of the command buffer will only be submitted once,
+    //  and the command buffer will be reset and recorded again between each submission.
+    cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    VK_CHECK(vkBeginCommandBuffer(cmdBufferHandle, &cmdBufferBeginInfo));
+}
+
+void VkContext::Impl::EndRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBufferEntity)
+{
+    const auto cmdBufferHandle = std::get<1>(cmdBufferEntity);
+    VK_CHECK(vkEndCommandBuffer(cmdBufferHandle));
+}
+
 std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::Impl::createBuffer(
     const std::string &name,
     VkDeviceSize bufferSizeInBytes,
@@ -2252,6 +2279,15 @@ void VkContext::writeImage(
     void *rawData)
 {
     return _pimpl->writeImage(image, stagingBuffer, cmdBuffer, rawData);
+}
+
+void VkContext::BeginRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer)
+{
+    return _pimpl->BeginRecordCommandBuffer(cmdBuffer);
+}
+void VkContext::EndRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer)
+{
+     return _pimpl->EndRecordCommandBuffer(cmdBuffer);
 }
 
 void VkContext::generateMipmaps(

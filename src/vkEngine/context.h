@@ -108,6 +108,9 @@ public:
         uint32_t inflightCount,
         VkFenceCreateFlags flags);
 
+    void BeginRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence>& cmdBuffer);
+    void EndRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence>& cmdBuffer);
+
     std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> createPersistentBuffer(
         const std::string &name,
         VkDeviceSize bufferSizeInBytes,

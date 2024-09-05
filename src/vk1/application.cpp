@@ -27,8 +27,9 @@ void VkApplication::init()
                                       _ctx.createGraphicsCommandBuffers("rendering", MAX_FRAMES_IN_FLIGHT,
                                                                         MAX_FRAMES_IN_FLIGHT, VK_FENCE_CREATE_SIGNALED_BIT)));
     // mipmap requires graphics capablilities
+    // VK_FENCE_CREATE_SIGNALED_BIT to unify waitFence behavior in beginRecordCommandBuffer
     _cmdBuffers.insert(std::make_pair(COMMAND_SEMANTIC::IO,
-                                      _ctx.createGraphicsCommandBuffers("io", 1, 1, 0)));
+                                      _ctx.createGraphicsCommandBuffers("io", 1, 1, VK_FENCE_CREATE_SIGNALED_BIT)));
 
     // vao, textures and glb all depends on host-device io
     // one-time commandBuffer _uploadCmd
@@ -154,12 +155,15 @@ void VkApplication::renderPerFrame()
     ASSERT(_currentFrameId >= 0 && _currentFrameId < cmdBuffersForRendering.size(),
            "_currentFrameId must be in the valid range of cmdBuffers");
 
+    _ctx.BeginRecordCommandBuffer(cmdBuffersForRendering[_currentFrameId]);
+
     const auto cmdToRecord = std::get<1>(cmdBuffersForRendering[_currentFrameId]);
     const auto fenceToWait = std::get<2>(cmdBuffersForRendering[_currentFrameId]);
 
-    // no timeout set
-    VK_CHECK(vkWaitForFences(logicalDevice, 1, &fenceToWait, VK_TRUE, UINT64_MAX));
-
+    // // no timeout set
+    // VK_CHECK(vkWaitForFences(logicalDevice, 1, &fenceToWait, VK_TRUE, UINT64_MAX));
+    // // vkWaitForFences ensure the previous command is submitted from the host, now it can be modified.
+    // VK_CHECK(vkResetCommandBuffer(cmdToRecord, 0));
     // VK_CHECK(vkResetFences(device_, 1, &acquireFence_));
     uint32_t swapChainImageIndex;
     VkResult result = vkAcquireNextImageKHR(
@@ -173,12 +177,10 @@ void VkApplication::renderPerFrame()
     assert(result == VK_SUCCESS ||
            result == VK_SUBOPTIMAL_KHR); // failed to acquire swap chain image
     updateUniformBuffer(_currentFrameId);
-
-    // vkWaitForFences and reset pattern
-    VK_CHECK(vkResetFences(logicalDevice, 1, &fenceToWait));
-    // vkWaitForFences ensure the previous command is submitted from the host, now it can be modified.
-    VK_CHECK(vkResetCommandBuffer(cmdToRecord, 0));
+    
     recordCommandBuffer(cmdToRecord, swapChainImageIndex);
+    _ctx.EndRecordCommandBuffer(cmdBuffersForRendering[_currentFrameId]);
+
     // submit command
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -198,6 +200,9 @@ void VkApplication::renderPerFrame()
     VkSemaphore signalRenderedSemaphores[] = {_imageRendereredSemaphores[_currentFrameId]};
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalRenderedSemaphores;
+    
+    // vkWaitForFences and reset pattern
+    VK_CHECK(vkResetFences(logicalDevice, 1, &fenceToWait));
     // signal fence
     VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &submitInfo, fenceToWait));
 
@@ -910,13 +915,14 @@ void VkApplication::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t 
 {
     auto swapChainExtent = _ctx.getSwapChainExtent();
 
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    //  command buffer will be reset and recorded again between each submissio
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    beginInfo.pInheritanceInfo = nullptr;
+    // VkCommandBufferBeginInfo beginInfo{};
+    // beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    // //  command buffer will be reset and recorded again between each submissio
+    // beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    // beginInfo.pInheritanceInfo = nullptr;
 
-    VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
+    // VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
+    
 
     // Begin Render Pass, only 1 render pass
     constexpr VkClearValue clearColor{0.0f, 0.0f, 0.0f, 0.0f};
@@ -975,7 +981,7 @@ void VkApplication::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t 
     vkCmdDrawIndexedIndirect(commandBuffer, std::get<0>(_indirectDrawB), 0, _numMeshes,
                              sizeof(IndirectDrawForVulkan));
     vkCmdEndRenderPass(commandBuffer);
-    VK_CHECK(vkEndCommandBuffer(commandBuffer));
+    // VK_CHECK(vkEndCommandBuffer(commandBuffer));
 }
 
 void VkApplication::createPerFrameSyncObjects()
@@ -1006,12 +1012,7 @@ void VkApplication::preHostDeviceIO()
     auto logicalDevice = _ctx.getLogicDevice();
     const auto uploadCmdBuffer = std::get<1>(cmdBuffersForIO[0]);
 
-    VkCommandBufferBeginInfo cmdBufferBeginInfo{};
-    cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    //  specifies that each recording of the command buffer will only be submitted once,
-    //  and the command buffer will be reset and recorded again between each submission.
-    cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    VK_CHECK(vkBeginCommandBuffer(uploadCmdBuffer, &cmdBufferBeginInfo));
+    _ctx.BeginRecordCommandBuffer(cmdBuffersForIO[0]);
 }
 
 // end recording of buffer.
@@ -1026,7 +1027,8 @@ void VkApplication::postHostDeviceIO()
     ASSERT(cmdBuffersForIO.size() == 1, "Only use 1 cmdBuffer for IO");
     const auto uploadCmdBuffer = std::get<1>(cmdBuffersForIO[0]);
     const auto uploadCmdBufferFence = std::get<2>(cmdBuffersForIO[0]);
-    VK_CHECK(vkEndCommandBuffer(uploadCmdBuffer));
+
+    _ctx.EndRecordCommandBuffer(cmdBuffersForIO[0]);
 
     const VkPipelineStageFlags flags = VK_PIPELINE_STAGE_TRANSFER_BIT;
 
@@ -1040,6 +1042,9 @@ void VkApplication::postHostDeviceIO()
     submitInfo.pCommandBuffers = &uploadCmdBuffer;
     submitInfo.signalSemaphoreCount = 0;
     submitInfo.pSignalSemaphores = VK_NULL_HANDLE;
+
+    // must resetfence of waiting
+    VK_CHECK(vkResetFences(logicalDevice, 1, &uploadCmdBufferFence));
     VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &submitInfo, uploadCmdBufferFence));
 
     const auto result = vkWaitForFences(logicalDevice, 1, &uploadCmdBufferFence, VK_TRUE,

@@ -18,32 +18,21 @@ void VkApplication::init()
 {
     _ctx.createSwapChain();
     _swapChainRenderPass = _ctx.createSwapChainRenderPass();
+    _ctx.initDefaultCommandBuffers();
 
     createShaderModules();
     createUniformBuffers();
 
-    // application logic
-    _cmdBuffers.insert(std::make_pair(COMMAND_SEMANTIC::RENDERING,
-                                      _ctx.createGraphicsCommandBuffers("rendering", MAX_FRAMES_IN_FLIGHT,
-                                                                        MAX_FRAMES_IN_FLIGHT, VK_FENCE_CREATE_SIGNALED_BIT)));
-    // mipmap requires graphics capablilities
-    // VK_FENCE_CREATE_SIGNALED_BIT to unify waitFence behavior in beginRecordCommandBuffer
-    _cmdBuffers.insert(std::make_pair(COMMAND_SEMANTIC::IO,
-                                      _ctx.createGraphicsCommandBuffers("io", 1, 1, VK_FENCE_CREATE_SIGNALED_BIT)));
-
     // vao, textures and glb all depends on host-device io
     // one-time commandBuffer _uploadCmd
     preHostDeviceIO();
-    // loadVao();
-    //  must prior to bindResourceToDescriptorSets due to imageView
-    // loadTextures();
     loadGLB();
     createDescriptorSetLayout();
     createDescriptorPool();
     allocateDescriptorSets();
     createGraphicsPipeline();
     createSwapChainFramebuffers();
-    createPerFrameSyncObjects();
+    // createPerFrameSyncObjects();
     postHostDeviceIO();
     bindResourceToDescriptorSets();
 
@@ -67,36 +56,9 @@ void VkApplication::teardown()
     vkDeviceWaitIdle(logicalDevice);
     deleteSwapChain();
 
-    // // delete io related commandbuffers and fence
-    // vkDestroyFence(logicalDevice, _ioFence, nullptr);
-    // // free cmdBuffer for io purpose
-    // vkFreeCommandBuffers(logicalDevice, _commandPool, 1, &_uploadCmd);
-
-    for (const auto &[cmdSemantic, cmdEntity] : _cmdBuffers)
-    {
-        VkCommandPool p{VK_NULL_HANDLE};
-        for (const auto &t : cmdEntity)
-        {
-            const auto &cmdPool = std::get<0>(t);
-            const auto &cmdBuffer = std::get<1>(t);
-            const auto &cmdFence = std::get<2>(t);
-            p = cmdPool;
-
-            vkDestroyFence(logicalDevice, cmdFence, nullptr);
-            vkFreeCommandBuffers(logicalDevice, cmdPool, 1, &cmdBuffer);
-        }
-        vkDestroyCommandPool(logicalDevice, p, nullptr);
-    }
-
     // shader module
     vkDestroyShaderModule(logicalDevice, _vsShaderModule, nullptr);
     vkDestroyShaderModule(logicalDevice, _fsShaderModule, nullptr);
-
-    // texture
-    // vkDestroyImageView(logicalDevice, _imageView, nullptr);
-    // vkDestroyImage(logicalDevice, _image, nullptr);
-    // vkDestroySampler(logicalDevice, _sampler, nullptr);
-    // vmaFreeMemory(vmaAllocator, _vmaImageAllocation);
 
     // glb
     for (const auto &imageEntity : _glbImageEntities)
@@ -132,9 +94,6 @@ void VkApplication::teardown()
         // unmap a buffer not mapped will crash
         // vmaUnmapMemory(_vmaAllocator, _vmaAllocations[i]);
         vmaDestroyBuffer(vmaAllocator, std::get<0>(_uniformBuffers[i]), std::get<1>(_uniformBuffers[i]));
-        // sync
-        vkDestroySemaphore(logicalDevice, _imageCanAcquireSemaphores[i], nullptr);
-        vkDestroySemaphore(logicalDevice, _imageRendereredSemaphores[i], nullptr);
     }
 
     // vkDestroyCommandPool(logicalDevice, _commandPool, nullptr);
@@ -151,75 +110,24 @@ void VkApplication::renderPerFrame()
     auto presentationQueue = _ctx.getPresentationQueue();
     auto swapChain = _ctx.getSwapChain();
 
-    auto cmdBuffersForRendering = _cmdBuffers[COMMAND_SEMANTIC::RENDERING];
-    ASSERT(_currentFrameId >= 0 && _currentFrameId < cmdBuffersForRendering.size(),
-           "_currentFrameId must be in the valid range of cmdBuffers");
-
-    _ctx.BeginRecordCommandBuffer(cmdBuffersForRendering[_currentFrameId]);
-
-    const auto cmdToRecord = std::get<1>(cmdBuffersForRendering[_currentFrameId]);
-    const auto fenceToWait = std::get<2>(cmdBuffersForRendering[_currentFrameId]);
+    auto [currentFrameId, cmdBuffersForRendering] = _ctx.getCommandBufferForRendering();
 
     // // no timeout set
     // VK_CHECK(vkWaitForFences(logicalDevice, 1, &fenceToWait, VK_TRUE, UINT64_MAX));
     // // vkWaitForFences ensure the previous command is submitted from the host, now it can be modified.
     // VK_CHECK(vkResetCommandBuffer(cmdToRecord, 0));
-    // VK_CHECK(vkResetFences(device_, 1, &acquireFence_));
-    uint32_t swapChainImageIndex;
-    VkResult result = vkAcquireNextImageKHR(
-        logicalDevice, swapChain, UINT64_MAX, _imageCanAcquireSemaphores[_currentFrameId],
-        VK_NULL_HANDLE, &swapChainImageIndex);
-    if (result == VK_ERROR_OUT_OF_DATE_KHR)
-    {
-        recreateSwapChain();
-        return;
-    }
-    assert(result == VK_SUCCESS ||
-           result == VK_SUBOPTIMAL_KHR); // failed to acquire swap chain image
-    updateUniformBuffer(_currentFrameId);
-    
-    recordCommandBuffer(cmdToRecord, swapChainImageIndex);
-    _ctx.EndRecordCommandBuffer(cmdBuffersForRendering[_currentFrameId]);
+    _ctx.BeginRecordCommandBuffer(cmdBuffersForRendering);
 
-    // submit command
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    const auto cmdToRecord = std::get<1>(cmdBuffersForRendering);
+    const auto fenceToWait = std::get<2>(cmdBuffersForRendering);
 
-    VkSemaphore waitSemaphores[] = {_imageCanAcquireSemaphores[_currentFrameId]};
-    // pipeline stages
-    // specifies the stage of the pipeline after blending where the final color values are output from the pipeline
-    // basically wait for the previous rendering finished
-    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = waitSemaphores;
-    submitInfo.pWaitDstStageMask = waitStages;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &cmdToRecord;
-    // signal semaphore
-    VkSemaphore signalRenderedSemaphores[] = {_imageRendereredSemaphores[_currentFrameId]};
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = signalRenderedSemaphores;
-    
-    // vkWaitForFences and reset pattern
-    VK_CHECK(vkResetFences(logicalDevice, 1, &fenceToWait));
-    // signal fence
-    VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &submitInfo, fenceToWait));
-
-    // present after rendering is done
-    VkPresentInfoKHR presentInfo{};
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = signalRenderedSemaphores;
-
-    VkSwapchainKHR swapChains[] = {swapChain};
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = swapChains;
-    presentInfo.pImageIndices = &swapChainImageIndex;
-    presentInfo.pResults = nullptr;
-    VK_CHECK(vkQueuePresentKHR(presentationQueue, &presentInfo));
-
-    _currentFrameId = (_currentFrameId + 1) % MAX_FRAMES_IN_FLIGHT;
+    uint32_t swapChainImageIndex = _ctx.getSwapChainImageIndexToRender();
+    updateUniformBuffer(currentFrameId);
+    recordCommandBuffer(currentFrameId, cmdToRecord, swapChainImageIndex);
+    _ctx.EndRecordCommandBuffer(cmdBuffersForRendering);
+    _ctx.submitCommand();
+    _ctx.present(swapChainImageIndex);
+    _ctx.advanceCommandBuffer();
 }
 
 void VkApplication::recreateSwapChain()
@@ -284,192 +192,6 @@ void VkApplication::createDescriptorSetLayout()
     setBindings[DESC_LAYOUT_SEMANTIC::COMBO_MAT][0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
     _descriptorSetLayouts = _ctx.createDescriptorSetLayout(setBindings);
-
-    //     const auto logicalDevice = _ctx.getLogicDevice();
-    //     // be careful of the MAX_FLIGHT
-    //     // set0: one ubo in vs: layout (set = 0, binding = 0) uniform UBO (Yes, has MAX_FLIGHT)
-    //     // set1: one sampler2D in fs: layout (set = 1, binding = 0) uniform sampler2D samplerColor;
-    //     // set2: glb packed buffer: layout(set = 1, binding = 0) readonly buffer VertexBuffer
-    //     // set6: glb material combo buffer
-
-    //     // Descriptor binding flag VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT:
-    //     // This flag indicates that descriptor set does not need to have valid descriptors in them
-    //     // as long as the invalid descriptors are not accessed during shader execution.
-
-    //     constexpr VkDescriptorBindingFlags flagsToEnable = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-    //                                                        VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
-    //                                                        VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
-    //     {
-    //         // for set0: ubo with MAX_FLIGHTS
-    //         std::vector<VkDescriptorSetLayoutBinding> dsLayoutBindings(1);
-    //         dsLayoutBindings[0].binding = 0; // depends on the shader: set 0, binding = 0
-    //         dsLayoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    //         // array resource
-    //         dsLayoutBindings[0].descriptorCount = 1;
-    //         dsLayoutBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    //         dsLayoutBindings[0].pImmutableSamplers = nullptr;
-
-    //         std::vector<VkDescriptorBindingFlags> bindFlags(dsLayoutBindings.size(), flagsToEnable);
-    //         const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
-    //             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-    //             .pNext = nullptr,
-    //             .bindingCount = static_cast<uint32_t>(dsLayoutBindings.size()),
-    //             .pBindingFlags = bindFlags.data(),
-    //         };
-    //         VkDescriptorSetLayoutCreateInfo layoutInfo{};
-    //         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    //         layoutInfo.bindingCount = dsLayoutBindings.size();
-    //         layoutInfo.pBindings = dsLayoutBindings.data();
-    // #if defined(_WIN32)
-    //         layoutInfo.pNext = &extendedInfo;
-    //         layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
-    // #endif
-    //         VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
-    //         VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr,
-    //                                              &descriptorSetLayout));
-
-    //         _descriptorSetLayouts.push_back(descriptorSetLayout);
-    //         _descriptorSetLayoutForUbo = descriptorSetLayout;
-    //     }
-
-    //     {
-    //         std::vector<VkDescriptorSetLayoutBinding> dsLayoutBindings(1);
-    //         dsLayoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    //         dsLayoutBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-    //         dsLayoutBindings[0].binding = 0;
-    //         dsLayoutBindings[0].descriptorCount = 1;
-
-    //         std::vector<VkDescriptorBindingFlags> bindFlags(dsLayoutBindings.size(), flagsToEnable);
-    //         const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
-    //             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-    //             .pNext = nullptr,
-    //             .bindingCount = static_cast<uint32_t>(dsLayoutBindings.size()),
-    //             .pBindingFlags = bindFlags.data(),
-    //         };
-
-    //         VkDescriptorSetLayoutCreateInfo layoutInfo{};
-    //         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    //         layoutInfo.bindingCount = dsLayoutBindings.size();
-    //         layoutInfo.pBindings = dsLayoutBindings.data();
-    // #if defined(_WIN32)
-    //         layoutInfo.pNext = &extendedInfo;
-    //         layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
-    // #endif
-
-    //         VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
-    //         VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr,
-    //                                              &descriptorSetLayout));
-
-    //         _descriptorSetLayouts.push_back(descriptorSetLayout);
-    //         _descriptorSetLayoutForComboVertexBuffer = descriptorSetLayout;
-    //     }
-
-    //     {
-    //         // set3 ssbo: for glb indirectDrawBuffer
-    //         VkDescriptorSetLayoutBinding dsLayoutBindings{};
-    //         dsLayoutBindings.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    //         dsLayoutBindings.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-    //         dsLayoutBindings.binding = 0;
-    //         dsLayoutBindings.descriptorCount = 1;
-
-    //         const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
-    //             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-    //             .pNext = nullptr,
-    //             .bindingCount = 1,
-    //             .pBindingFlags = &flagsToEnable,
-    //         };
-
-    //         VkDescriptorSetLayoutCreateInfo layoutInfo{};
-    //         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    //         layoutInfo.bindingCount = 1;
-    //         layoutInfo.pBindings = &dsLayoutBindings;
-    // #if defined(_WIN32)
-    //         layoutInfo.pNext = &extendedInfo;
-    //         layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
-    // #endif
-
-    //         VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
-    //         VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr,
-    //                                              &descriptorSetLayout));
-    //         _descriptorSetLayouts.push_back(descriptorSetLayout);
-    //         _descriptorSetLayoutForIndirectDrawBuffer = descriptorSetLayout;
-    //     }
-
-    //     {
-    //         // set 5 bindless Textures and sampler for glb
-    //         // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER vs VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
-    //         std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings;
-    //         {
-    //             VkDescriptorSetLayoutBinding dsLayoutBinding{};
-    //             dsLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-    //             dsLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    //             dsLayoutBinding.binding = 0;
-    //             dsLayoutBinding.descriptorCount = _glbImageEntities.size();
-    //             setLayoutBindings.emplace_back(dsLayoutBinding);
-    //         }
-    //         {
-    //             VkDescriptorSetLayoutBinding dsLayoutBinding{};
-    //             dsLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-    //             dsLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    //             dsLayoutBinding.binding = 1;
-    //             dsLayoutBinding.descriptorCount = 1;
-    //             setLayoutBindings.emplace_back(dsLayoutBinding);
-    //         }
-
-    //         std::vector<VkDescriptorBindingFlags> bindFlags(setLayoutBindings.size(), flagsToEnable);
-    //         const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
-    //             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-    //             .pNext = nullptr,
-    //             .bindingCount = static_cast<uint32_t>(bindFlags.size()),
-    //             .pBindingFlags = bindFlags.data(),
-    //         };
-
-    //         VkDescriptorSetLayoutCreateInfo layoutInfo{};
-    //         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    //         layoutInfo.bindingCount = 2;
-    //         layoutInfo.pBindings = setLayoutBindings.data();
-    // #if defined(_WIN32)
-    //         layoutInfo.pNext = &extendedInfo;
-    //         layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
-    // #endif
-
-    //         VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
-    //         VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr,
-    //                                              &descriptorSetLayout));
-    //         _descriptorSetLayouts.push_back(descriptorSetLayout);
-    //         _descriptorSetLayoutForTextureAndSampler = descriptorSetLayout;
-    //     }
-
-    //     {
-    //         // set5 ssbo: for glb material
-    //         VkDescriptorSetLayoutBinding dsLayoutBindings{};
-    //         dsLayoutBindings.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    //         dsLayoutBindings.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-    //         dsLayoutBindings.binding = 0;
-    //         dsLayoutBindings.descriptorCount = 1;
-
-    //         const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
-    //             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-    //             .pNext = nullptr,
-    //             .bindingCount = 1,
-    //             .pBindingFlags = &flagsToEnable,
-    //         };
-
-    //         VkDescriptorSetLayoutCreateInfo layoutInfo{};
-    //         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    //         layoutInfo.bindingCount = 1;
-    //         layoutInfo.pBindings = &dsLayoutBindings;
-    // #if defined(_WIN32)
-    //         layoutInfo.pNext = &extendedInfo;
-    //         layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
-    // #endif
-
-    //         VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
-    //         VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr,
-    //                                              &descriptorSetLayout));
-    //         _descriptorSetLayouts.push_back(descriptorSetLayout);
-    //         _descriptorSetLayoutForComboMaterialBuffer = descriptorSetLayout;
-    //     }
 }
 
 // depends on your glsl
@@ -891,38 +613,14 @@ void VkApplication::createSwapChainFramebuffers()
             swapChainExtent.width,
             swapChainExtent.height));
     }
-
-    // auto logicalDevice = _ctx.getLogicDevice();
-
-    // _swapChainFramebuffers.resize(_swapChainImageViews.size());
-    // VkFramebufferCreateInfo framebufferInfo{};
-    // framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    // framebufferInfo.renderPass = _swapChainRenderPass;
-    // framebufferInfo.attachmentCount = 1;
-    // framebufferInfo.width = _swapChainExtent.width;
-    // framebufferInfo.height = _swapChainExtent.height;
-    // framebufferInfo.layers = 1;
-    // for (size_t i = 0; i < _swapChainImageViews.size(); i++)
-    // {
-    //     VkImageView attachments[] = {_swapChainImageViews[i]};
-    //     framebufferInfo.pAttachments = attachments;
-    //     VK_CHECK(vkCreateFramebuffer(logicalDevice, &framebufferInfo, nullptr,
-    //                                  &_swapChainFramebuffers[i]));
-    // }
 }
 
-void VkApplication::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapChainImageIndex)
+void VkApplication::recordCommandBuffer(
+    uint32_t currentFrameId,
+    VkCommandBuffer commandBuffer,
+    uint32_t swapChainImageIndex)
 {
     auto swapChainExtent = _ctx.getSwapChainExtent();
-
-    // VkCommandBufferBeginInfo beginInfo{};
-    // beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    // //  command buffer will be reset and recorded again between each submissio
-    // beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    // beginInfo.pInheritanceInfo = nullptr;
-
-    // VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
-    
 
     // Begin Render Pass, only 1 render pass
     constexpr VkClearValue clearColor{0.0f, 0.0f, 0.0f, 0.0f};
@@ -955,7 +653,7 @@ void VkApplication::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t 
     // resource and ds to the shaders of this pipeline
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             _pipelineLayout, 0, 1,
-                            &_descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::UBO]][_currentFrameId],
+                            &_descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::UBO]][currentFrameId],
                             0,
                             nullptr);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -981,38 +679,35 @@ void VkApplication::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t 
     vkCmdDrawIndexedIndirect(commandBuffer, std::get<0>(_indirectDrawB), 0, _numMeshes,
                              sizeof(IndirectDrawForVulkan));
     vkCmdEndRenderPass(commandBuffer);
-    // VK_CHECK(vkEndCommandBuffer(commandBuffer));
 }
 
-void VkApplication::createPerFrameSyncObjects()
-{
-    auto logicalDevice = _ctx.getLogicDevice();
+// void VkApplication::createPerFrameSyncObjects()
+// {
+//     auto logicalDevice = _ctx.getLogicDevice();
 
-    _imageCanAcquireSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-    _imageRendereredSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+//     _imageCanAcquireSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+//     _imageRendereredSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
 
-    VkSemaphoreCreateInfo semaphoreInfo{};
-    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+//     VkSemaphoreCreateInfo semaphoreInfo{};
+//     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
-    {
-        VK_CHECK(vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr,
-                                   &_imageCanAcquireSemaphores[i]));
-        VK_CHECK(vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr,
-                                   &_imageRendereredSemaphores[i]));
-    }
-}
+//     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+//     {
+//         VK_CHECK(vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr,
+//                                    &_imageCanAcquireSemaphores[i]));
+//         VK_CHECK(vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr,
+//                                    &_imageRendereredSemaphores[i]));
+//     }
+// }
 
 // create shared _uploadCmd and begin
 void VkApplication::preHostDeviceIO()
 {
-    auto cmdBuffersForIO = _cmdBuffers[COMMAND_SEMANTIC::IO];
-    ASSERT(cmdBuffersForIO.size() == 1, "Only use 1 cmdBuffer for IO")
-
+    // auto cmdBuffersForIO = _cmdBuffers[COMMAND_SEMANTIC::IO];
+    // ASSERT(cmdBuffersForIO.size() == 1, "Only use 1 cmdBuffer for IO")
     auto logicalDevice = _ctx.getLogicDevice();
-    const auto uploadCmdBuffer = std::get<1>(cmdBuffersForIO[0]);
-
-    _ctx.BeginRecordCommandBuffer(cmdBuffersForIO[0]);
+    auto cmdBuffersForIO = _ctx.getCommandBufferForIO();
+    _ctx.BeginRecordCommandBuffer(cmdBuffersForIO);
 }
 
 // end recording of buffer.
@@ -1023,12 +718,13 @@ void VkApplication::postHostDeviceIO()
     auto graphicsQueue = _ctx.getGraphicsQueue();
     auto vmaAllocator = _ctx.getVmaAllocator();
 
-    auto cmdBuffersForIO = _cmdBuffers[COMMAND_SEMANTIC::IO];
-    ASSERT(cmdBuffersForIO.size() == 1, "Only use 1 cmdBuffer for IO");
-    const auto uploadCmdBuffer = std::get<1>(cmdBuffersForIO[0]);
-    const auto uploadCmdBufferFence = std::get<2>(cmdBuffersForIO[0]);
+    auto cmdBuffersForIO = _ctx.getCommandBufferForIO();
+    // auto cmdBuffersForIO = _cmdBuffers[COMMAND_SEMANTIC::IO];
+    // ASSERT(cmdBuffersForIO.size() == 1, "Only use 1 cmdBuffer for IO");
+    const auto uploadCmdBuffer = std::get<1>(cmdBuffersForIO);
+    const auto uploadCmdBufferFence = std::get<2>(cmdBuffersForIO);
 
-    _ctx.EndRecordCommandBuffer(cmdBuffersForIO[0]);
+    _ctx.EndRecordCommandBuffer(cmdBuffersForIO);
 
     const VkPipelineStageFlags flags = VK_PIPELINE_STAGE_TRANSFER_BIT;
 
@@ -1591,9 +1287,11 @@ void VkApplication::loadGLB()
     const auto selectedPhysicalDevice = _ctx.getSelectedPhysicalDevice();
     const auto selectedPhysicalDeviceProp = _ctx.getSelectedPhysicalDeviceProp();
 
-    auto cmdBuffersForIO = _cmdBuffers[COMMAND_SEMANTIC::IO];
-    const auto uploadCmdBuffer = std::get<1>(cmdBuffersForIO[0]);
-    const auto uploadCmdBufferFence = std::get<2>(cmdBuffersForIO[0]);
+    // auto cmdBuffersForIO = _cmdBuffers[COMMAND_SEMANTIC::IO];
+    auto cmdBuffersForIO = _ctx.getCommandBufferForIO();
+
+    const auto uploadCmdBuffer = std::get<1>(cmdBuffersForIO);
+    const auto uploadCmdBufferFence = std::get<2>(cmdBuffersForIO);
 
     std::string filename = getAssetPath() + "\\" + _model;
 
@@ -1665,7 +1363,7 @@ void VkApplication::loadGLB()
             _ctx.writeBuffer(
                 _stagingVbForMesh.back(),
                 _compositeVB,
-                cmdBuffersForIO[0],
+                cmdBuffersForIO,
                 vertexBufferPtr,
                 vertexByteSizeMesh,
                 0,
@@ -1684,7 +1382,7 @@ void VkApplication::loadGLB()
             _ctx.writeBuffer(
                 _stagingIbForMesh.back(),
                 _compositeIB,
-                cmdBuffersForIO[0],
+                cmdBuffersForIO,
                 indicesBufferPtr,
                 indicesByteSizeMesh,
                 0,
@@ -1742,13 +1440,13 @@ void VkApplication::loadGLB()
             _ctx.writeImage(
                 _glbImageEntities.back(),
                 _glbImageStagingBuffers.back(),
-                cmdBuffersForIO[0],
+                cmdBuffersForIO,
                 texture->data);
 
             _ctx.generateMipmaps(
                 _glbImageEntities.back(),
                 _glbImageStagingBuffers.back(),
-                cmdBuffersForIO[0]);
+                cmdBuffersForIO);
 
             ++textureId;
         }
@@ -1778,7 +1476,7 @@ void VkApplication::loadGLB()
             _ctx.writeBuffer(
                 _stagingMatBuffer,
                 _compositeMatB,
-                cmdBuffersForIO[0],
+                cmdBuffersForIO,
                 materialBufferPtr,
                 materialByteSize,
                 0,
@@ -1808,7 +1506,7 @@ void VkApplication::loadGLB()
             _ctx.writeBuffer(
                 _stagingIndirectDrawBuffer,
                 _indirectDrawB,
-                cmdBuffersForIO[0],
+                cmdBuffersForIO,
                 indirectDrawBufferPtr,
                 indirectDrawBufferByteSize,
                 0,

@@ -63,6 +63,13 @@ struct AndroidNativeWindowDeleter
 #endif
 #endif
 
+enum COMMAND_SEMANTIC : int
+{
+    RENDERING = 0,
+    IO,
+    COMMAND_SEMANTIC_SIZE
+};
+
 class Window;
 class VkContext
 {
@@ -96,6 +103,8 @@ public:
         uint32_t width,
         uint32_t height);
 
+    void initDefaultCommandBuffers();
+
     std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> createGraphicsCommandBuffers(
         const std::string &name,
         uint32_t count,
@@ -108,8 +117,8 @@ public:
         uint32_t inflightCount,
         VkFenceCreateFlags flags);
 
-    void BeginRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence>& cmdBuffer);
-    void EndRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence>& cmdBuffer);
+    void BeginRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer);
+    void EndRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer);
 
     std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> createPersistentBuffer(
         const std::string &name,
@@ -211,6 +220,16 @@ public:
     VkExtent2D getSwapChainExtent() const;
 
     const std::vector<VkImageView> &getSwapChainImageViews() const;
+
+    const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &getCommandBufferForIO() const;
+    std::pair<uint32_t, std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> getCommandBufferForRendering() const;
+    void advanceCommandBuffer();
+
+    void submitCommand();
+
+    void present(uint32_t swapChainImageIndex);
+
+    uint32_t getSwapChainImageIndexToRender() const; 
 
     // features chains
     // now is to toggle features selectively

@@ -58,10 +58,29 @@ public:
     {
         vkDeviceWaitIdle(_logicalDevice);
 
+        for (const auto &[cmdSemantic, cmdEntity] : cmdBuffers)
+        {
+            VkCommandPool p{VK_NULL_HANDLE};
+            for (const auto &t : cmdEntity)
+            {
+                const auto &cmdPool = std::get<0>(t);
+                const auto &cmdBuffer = std::get<1>(t);
+                const auto &cmdFence = std::get<2>(t);
+                p = cmdPool;
+
+                vkDestroyFence(_logicalDevice, cmdFence, nullptr);
+                vkFreeCommandBuffers(_logicalDevice, cmdPool, 1, &cmdBuffer);
+            }
+            vkDestroyCommandPool(_logicalDevice, p, nullptr);
+        }
+
         for (size_t i = 0; i < _swapChainImageViews.size(); i++)
         {
             vkDestroyImageView(_logicalDevice, _swapChainImageViews[i], nullptr);
+            vkDestroySemaphore(_logicalDevice, imageCanAcquireSemaphores[i], nullptr);
+            vkDestroySemaphore(_logicalDevice, imageRendereredSemaphores[i], nullptr);
         }
+
         // image is owned by swap chain
         vkDestroySwapchainKHR(_logicalDevice, _swapChain, nullptr);
 
@@ -73,8 +92,8 @@ public:
     }
 
     void createSwapChain();
-
     void createSwapChainImageView();
+    void createPerFrameSyncObjects();
 
     VkRenderPass createSwapChainRenderPass();
 
@@ -180,6 +199,14 @@ public:
         const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
         const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer);
 
+    std::pair<uint32_t, std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> getCommandBufferForRendering();
+
+    void submitCommand();
+
+    void present(uint32_t swapChainImageIndex);
+
+    uint32_t getSwapChainImageIndexToRender() const;
+
     inline auto getLogicDevice() const
     {
         return _logicalDevice;
@@ -250,6 +277,16 @@ public:
     {
         return _swapChainImageViews;
     }
+
+    // cmdpool and cmdbuffers
+    using CommandEntity = std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>>;
+    std::unordered_map<COMMAND_SEMANTIC, CommandEntity> cmdBuffers;
+
+    // GPU-CPU SYNC
+    std::vector<VkSemaphore> imageCanAcquireSemaphores;
+    std::vector<VkSemaphore> imageRendereredSemaphores;
+    // 0, 1, 2, 0, 1, 2, ...
+    uint32_t currentFrameId = 0;
 
 private:
     void createInstance()
@@ -1243,6 +1280,24 @@ void VkContext::Impl::createSwapChainImageView()
     }
 }
 
+void VkContext::Impl::createPerFrameSyncObjects()
+{
+    const auto numFramesInFlight = getSwapChainImageViews().size();
+    imageCanAcquireSemaphores.resize(numFramesInFlight);
+    imageRendereredSemaphores.resize(numFramesInFlight);
+
+    VkSemaphoreCreateInfo semaphoreInfo{};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        VK_CHECK(vkCreateSemaphore(_logicalDevice, &semaphoreInfo, nullptr,
+                                   &imageCanAcquireSemaphores[i]));
+        VK_CHECK(vkCreateSemaphore(_logicalDevice, &semaphoreInfo, nullptr,
+                                   &imageRendereredSemaphores[i]));
+    }
+}
+
 VkRenderPass VkContext::Impl::createSwapChainRenderPass()
 {
     const auto logicalDevice = _logicalDevice;
@@ -2071,6 +2126,81 @@ void VkContext::Impl::generateMipmaps(
                          1, &convertToShaderReadBarrier);
 }
 
+std::pair<uint32_t, std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl::getCommandBufferForRendering()
+{
+    const auto &cmdBuffersForRendering = cmdBuffers[COMMAND_SEMANTIC::RENDERING];
+
+    ASSERT(currentFrameId >= 0 && currentFrameId < cmdBuffersForRendering.size(),
+           "currentFrameId must be in the valid range of cmdBuffers");
+    return std::make_pair(currentFrameId, cmdBuffersForRendering[currentFrameId]);
+    // std::tuple_cat(cmdBuffersForRendering[currentFrameId], std::tuple<uint32_t>(currentFrameId));
+}
+
+void VkContext::Impl::submitCommand()
+{
+    auto [currentFrameId, cmdBuffersForRendering] = getCommandBufferForRendering();
+    const auto cmdToRecord = std::get<1>(cmdBuffersForRendering);
+    const auto fenceToWait = std::get<2>(cmdBuffersForRendering);
+    // submit command
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    VkSemaphore waitSemaphores[] = {imageCanAcquireSemaphores[currentFrameId]};
+    // pipeline stages
+    // specifies the stage of the pipeline after blending where the final color values are output from the pipeline
+    // basically wait for the previous rendering finished
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = waitSemaphores;
+    submitInfo.pWaitDstStageMask = waitStages;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &cmdToRecord;
+
+    // signal semaphore
+    VkSemaphore signalRenderedSemaphores[] = {imageRendereredSemaphores[currentFrameId]};
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = signalRenderedSemaphores;
+
+    // vkWaitForFences and reset pattern
+    VK_CHECK(vkResetFences(_logicalDevice, 1, &fenceToWait));
+    // signal fence+
+    VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submitInfo, fenceToWait));
+}
+
+void VkContext::Impl::present(uint32_t swapChainImageIndex)
+{
+    // present after rendering is done
+    VkSemaphore signalRenderedSemaphores[] = {imageRendereredSemaphores[currentFrameId]};
+
+    VkPresentInfoKHR presentInfo{};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = signalRenderedSemaphores;
+
+    VkSwapchainKHR swapChains[] = {_swapChain};
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = swapChains;
+    presentInfo.pImageIndices = &swapChainImageIndex;
+    presentInfo.pResults = nullptr;
+    VK_CHECK(vkQueuePresentKHR(_presentationQueue, &presentInfo));
+}
+
+uint32_t VkContext::Impl::getSwapChainImageIndexToRender() const
+{
+    uint32_t swapChainImageIndex;
+    VkResult result = vkAcquireNextImageKHR(
+        _logicalDevice, _swapChain, UINT64_MAX, imageCanAcquireSemaphores[currentFrameId],
+        VK_NULL_HANDLE, &swapChainImageIndex);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        // recreateSwapChain();
+        return swapChainImageIndex;
+    }
+    assert(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR); // failed to acquire swap chain image
+    return swapChainImageIndex;
+}
+
 VkPhysicalDeviceFeatures VkContext::sPhysicalDeviceFeatures = {
 
 };
@@ -2129,6 +2259,7 @@ void VkContext::createSwapChain()
 {
     _pimpl->createSwapChain();
     _pimpl->createSwapChainImageView();
+    _pimpl->createPerFrameSyncObjects();
 }
 
 VkRenderPass VkContext::createSwapChainRenderPass()
@@ -2146,6 +2277,18 @@ VkFramebuffer VkContext::createFramebuffer(
     uint32_t height)
 {
     return _pimpl->createFramebuffer(name, renderPass, colors, depth, stencil, width, height);
+}
+
+void VkContext::initDefaultCommandBuffers()
+{
+    const auto numFramesInFlight = getSwapChainImageViews().size();
+    _pimpl->cmdBuffers.insert(std::make_pair(COMMAND_SEMANTIC::RENDERING,
+                                             _pimpl->createGraphicsCommandBuffers("rendering", numFramesInFlight,
+                                                                                  numFramesInFlight, VK_FENCE_CREATE_SIGNALED_BIT)));
+    // mipmap requires graphics capablilities
+    // VK_FENCE_CREATE_SIGNALED_BIT to unify waitFence behavior in beginRecordCommandBuffer
+    _pimpl->cmdBuffers.insert(std::make_pair(COMMAND_SEMANTIC::IO,
+                                             _pimpl->createGraphicsCommandBuffers("io", 1, 1, VK_FENCE_CREATE_SIGNALED_BIT)));
 }
 
 std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::createGraphicsCommandBuffers(
@@ -2287,7 +2430,7 @@ void VkContext::BeginRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuff
 }
 void VkContext::EndRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer)
 {
-     return _pimpl->EndRecordCommandBuffer(cmdBuffer);
+    return _pimpl->EndRecordCommandBuffer(cmdBuffer);
 }
 
 void VkContext::generateMipmaps(
@@ -2366,4 +2509,35 @@ VkExtent2D VkContext::getSwapChainExtent() const
 const std::vector<VkImageView> &VkContext::getSwapChainImageViews() const
 {
     return _pimpl->getSwapChainImageViews();
+}
+
+const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &VkContext::getCommandBufferForIO() const
+{
+    return _pimpl->cmdBuffers[COMMAND_SEMANTIC::IO][0];
+}
+
+std::pair<uint32_t, std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::getCommandBufferForRendering() const
+{
+    return _pimpl->getCommandBufferForRendering();
+}
+
+void VkContext::advanceCommandBuffer()
+{
+    const auto numFramesInFlight = getSwapChainImageViews().size();
+    _pimpl->currentFrameId = (_pimpl->currentFrameId + 1) % numFramesInFlight;
+}
+
+void VkContext::submitCommand()
+{
+    return _pimpl->submitCommand();
+}
+
+void VkContext::present(uint32_t swapChainImageIndex)
+{
+    return _pimpl->present(swapChainImageIndex);
+}
+
+uint32_t VkContext::getSwapChainImageIndexToRender() const
+{
+    return _pimpl->getSwapChainImageIndexToRender();
 }

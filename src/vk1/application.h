@@ -69,13 +69,6 @@ class Camera;
 class VkContext;
 class VkApplication
 {
-    enum COMMAND_SEMANTIC : int
-    {
-        RENDERING = 0,
-        IO,
-        COMMAND_SEMANTIC_SIZE
-    };
-
     enum DESC_LAYOUT_SEMANTIC : int
     {
         UBO = 0,
@@ -122,7 +115,10 @@ private:
     void createSwapChainFramebuffers();
     void createCommandPool();
     void createCommandBuffer();
-    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+    void recordCommandBuffer(
+        uint32_t currentFrameId,
+        VkCommandBuffer commandBuffer, 
+        uint32_t imageIndex);
     void createPerFrameSyncObjects();
 
     // app-specific
@@ -163,16 +159,6 @@ private:
     // for multiple sets + bindings
     VkPipelineLayout _pipelineLayout;
     VkPipeline _graphicsPipeline;
-
-    // cmdpool and cmdbuffers
-    using CommandEntity = std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>>;
-    std::unordered_map<COMMAND_SEMANTIC, CommandEntity> _cmdBuffers;
-
-    // GPU-CPU SYNC
-    std::vector<VkSemaphore> _imageCanAcquireSemaphores;
-    std::vector<VkSemaphore> _imageRendereredSemaphores;
-    // 0, 1, 2, 0, 1, 2, ...
-    uint32_t _currentFrameId = 0;
 
     // vao, vbo, index buffer
     uint32_t _indexCount{0};

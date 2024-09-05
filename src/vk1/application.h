@@ -69,6 +69,23 @@ class Camera;
 class VkContext;
 class VkApplication
 {
+    enum COMMAND_SEMANTIC : int
+    {
+        RENDERING = 0,
+        IO,
+        COMMAND_SEMANTIC_SIZE
+    };
+
+    enum DESC_LAYOUT_SEMANTIC : int
+    {
+        UBO = 0,
+        COMBO_VERT,
+        COMBO_IDR,
+        TEX_SAMP,
+        COMBO_MAT,
+        DESC_LAYOUT_SEMANTIC_SIZE
+    };
+
 public:
     VkApplication() = delete;
     VkApplication(
@@ -137,7 +154,7 @@ private:
     std::vector<VkDescriptorSetLayout> _descriptorSetLayouts;
 
     VkDescriptorPool _descriptorSetPool{VK_NULL_HANDLE};
-    std::unordered_map<VkDescriptorSetLayout*, std::vector<VkDescriptorSet>> _descriptorSets;
+    std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> _descriptorSets;
 
     // resource
     std::vector<std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo>> _uniformBuffers;
@@ -148,8 +165,8 @@ private:
     VkPipeline _graphicsPipeline;
 
     // cmdpool and cmdbuffers
-    std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> _cmdBuffersForRendering;
-    std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> _cmdBuffersForIO;
+    using CommandEntity = std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>>;
+    std::unordered_map<COMMAND_SEMANTIC, CommandEntity> _cmdBuffers;
 
     // GPU-CPU SYNC
     std::vector<VkSemaphore> _imageCanAcquireSemaphores;

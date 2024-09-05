@@ -14,16 +14,6 @@ static constexpr int MAX_DESCRIPTOR_SETS = 1 * MAX_FRAMES_IN_FLIGHT + 1 + 4;
 //  Default fence timeout in nanoseconds
 #define DEFAULT_FENCE_TIMEOUT 100000000000
 
-enum DESC_LAYOUT_SEMANTIC : int
-{
-    UBO = 0,
-    COMBO_VERT,
-    COMBO_IDR,
-    TEX_SAMP,
-    COMBO_MAT,
-    DESC_LAYOUT_SEMANTIC_SIZE
-};
-
 void VkApplication::init()
 {
     _ctx.createSwapChain();
@@ -33,9 +23,12 @@ void VkApplication::init()
     createUniformBuffers();
 
     // application logic
-    _cmdBuffersForRendering = _ctx.createGraphicsCommandBuffers("rendering", MAX_FRAMES_IN_FLIGHT,
-                                                                MAX_FRAMES_IN_FLIGHT, VK_FENCE_CREATE_SIGNALED_BIT);
-    _cmdBuffersForIO = _ctx.createGraphicsCommandBuffers("io", 1, 1, 0);
+    _cmdBuffers.insert(std::make_pair(COMMAND_SEMANTIC::RENDERING,
+                                      _ctx.createGraphicsCommandBuffers("rendering", MAX_FRAMES_IN_FLIGHT,
+                                                                        MAX_FRAMES_IN_FLIGHT, VK_FENCE_CREATE_SIGNALED_BIT)));
+    // mipmap requires graphics capablilities
+    _cmdBuffers.insert(std::make_pair(COMMAND_SEMANTIC::IO,
+                                      _ctx.createGraphicsCommandBuffers("io", 1, 1, 0)));
 
     // vao, textures and glb all depends on host-device io
     // one-time commandBuffer _uploadCmd
@@ -77,25 +70,11 @@ void VkApplication::teardown()
     // vkDestroyFence(logicalDevice, _ioFence, nullptr);
     // // free cmdBuffer for io purpose
     // vkFreeCommandBuffers(logicalDevice, _commandPool, 1, &_uploadCmd);
+
+    for (const auto &[cmdSemantic, cmdEntity] : _cmdBuffers)
     {
         VkCommandPool p{VK_NULL_HANDLE};
-        for (const auto &t : _cmdBuffersForIO)
-        {
-            const auto &cmdPool = std::get<0>(t);
-            const auto &cmdBuffer = std::get<1>(t);
-            const auto &cmdFence = std::get<2>(t);
-            p = cmdPool;
-
-            vkDestroyFence(logicalDevice, cmdFence, nullptr);
-            vkFreeCommandBuffers(logicalDevice, cmdPool, 1, &cmdBuffer);
-        }
-        vkDestroyCommandPool(logicalDevice, p, nullptr);
-    }
-
-    // inflight rendering command buffers
-    {
-        VkCommandPool p{VK_NULL_HANDLE};
-        for (const auto &t : _cmdBuffersForRendering)
+        for (const auto &t : cmdEntity)
         {
             const auto &cmdPool = std::get<0>(t);
             const auto &cmdBuffer = std::get<1>(t);
@@ -171,11 +150,12 @@ void VkApplication::renderPerFrame()
     auto presentationQueue = _ctx.getPresentationQueue();
     auto swapChain = _ctx.getSwapChain();
 
-    ASSERT(_currentFrameId >= 0 && _currentFrameId < _cmdBuffersForRendering.size(),
+    auto cmdBuffersForRendering = _cmdBuffers[COMMAND_SEMANTIC::RENDERING];
+    ASSERT(_currentFrameId >= 0 && _currentFrameId < cmdBuffersForRendering.size(),
            "_currentFrameId must be in the valid range of cmdBuffers");
 
-    const auto cmdToRecord = std::get<1>(_cmdBuffersForRendering[_currentFrameId]);
-    const auto fenceToWait = std::get<2>(_cmdBuffersForRendering[_currentFrameId]);
+    const auto cmdToRecord = std::get<1>(cmdBuffersForRendering[_currentFrameId]);
+    const auto fenceToWait = std::get<2>(cmdBuffersForRendering[_currentFrameId]);
 
     // no timeout set
     VK_CHECK(vkWaitForFences(logicalDevice, 1, &fenceToWait, VK_TRUE, UINT64_MAX));
@@ -636,7 +616,7 @@ void VkApplication::bindResourceToDescriptorSets()
             dstSets[0],
             VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
             0);
-            
+
         // for glb samplers
         std::vector<VkSampler> imageSamplers;
         std::transform(_glbSamplerEntities.begin(), _glbSamplerEntities.end(),
@@ -1020,10 +1000,11 @@ void VkApplication::createPerFrameSyncObjects()
 // create shared _uploadCmd and begin
 void VkApplication::preHostDeviceIO()
 {
-    ASSERT(_cmdBuffersForIO.size() == 1, "Only use 1 cmdBuffer for IO")
+    auto cmdBuffersForIO = _cmdBuffers[COMMAND_SEMANTIC::IO];
+    ASSERT(cmdBuffersForIO.size() == 1, "Only use 1 cmdBuffer for IO")
 
     auto logicalDevice = _ctx.getLogicDevice();
-    const auto uploadCmdBuffer = std::get<1>(_cmdBuffersForIO[0]);
+    const auto uploadCmdBuffer = std::get<1>(cmdBuffersForIO[0]);
 
     VkCommandBufferBeginInfo cmdBufferBeginInfo{};
     cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1041,9 +1022,10 @@ void VkApplication::postHostDeviceIO()
     auto graphicsQueue = _ctx.getGraphicsQueue();
     auto vmaAllocator = _ctx.getVmaAllocator();
 
-    ASSERT(_cmdBuffersForIO.size() == 1, "Only use 1 cmdBuffer for IO")
-    const auto uploadCmdBuffer = std::get<1>(_cmdBuffersForIO[0]);
-    const auto uploadCmdBufferFence = std::get<2>(_cmdBuffersForIO[0]);
+    auto cmdBuffersForIO = _cmdBuffers[COMMAND_SEMANTIC::IO];
+    ASSERT(cmdBuffersForIO.size() == 1, "Only use 1 cmdBuffer for IO");
+    const auto uploadCmdBuffer = std::get<1>(cmdBuffersForIO[0]);
+    const auto uploadCmdBufferFence = std::get<2>(cmdBuffersForIO[0]);
     VK_CHECK(vkEndCommandBuffer(uploadCmdBuffer));
 
     const VkPipelineStageFlags flags = VK_PIPELINE_STAGE_TRANSFER_BIT;
@@ -1604,8 +1586,9 @@ void VkApplication::loadGLB()
     const auto selectedPhysicalDevice = _ctx.getSelectedPhysicalDevice();
     const auto selectedPhysicalDeviceProp = _ctx.getSelectedPhysicalDeviceProp();
 
-    const auto uploadCmdBuffer = std::get<1>(_cmdBuffersForIO[0]);
-    const auto uploadCmdBufferFence = std::get<2>(_cmdBuffersForIO[0]);
+    auto cmdBuffersForIO = _cmdBuffers[COMMAND_SEMANTIC::IO];
+    const auto uploadCmdBuffer = std::get<1>(cmdBuffersForIO[0]);
+    const auto uploadCmdBufferFence = std::get<2>(cmdBuffersForIO[0]);
 
     std::string filename = getAssetPath() + "\\" + _model;
 
@@ -1677,7 +1660,7 @@ void VkApplication::loadGLB()
             _ctx.writeBuffer(
                 _stagingVbForMesh.back(),
                 _compositeVB,
-                _cmdBuffersForIO[0],
+                cmdBuffersForIO[0],
                 vertexBufferPtr,
                 vertexByteSizeMesh,
                 0,
@@ -1696,7 +1679,7 @@ void VkApplication::loadGLB()
             _ctx.writeBuffer(
                 _stagingIbForMesh.back(),
                 _compositeIB,
-                _cmdBuffersForIO[0],
+                cmdBuffersForIO[0],
                 indicesBufferPtr,
                 indicesByteSizeMesh,
                 0,
@@ -1754,13 +1737,13 @@ void VkApplication::loadGLB()
             _ctx.writeImage(
                 _glbImageEntities.back(),
                 _glbImageStagingBuffers.back(),
-                _cmdBuffersForIO[0],
+                cmdBuffersForIO[0],
                 texture->data);
 
             _ctx.generateMipmaps(
                 _glbImageEntities.back(),
                 _glbImageStagingBuffers.back(),
-                _cmdBuffersForIO[0]);
+                cmdBuffersForIO[0]);
 
             ++textureId;
         }
@@ -1790,7 +1773,7 @@ void VkApplication::loadGLB()
             _ctx.writeBuffer(
                 _stagingMatBuffer,
                 _compositeMatB,
-                _cmdBuffersForIO[0],
+                cmdBuffersForIO[0],
                 materialBufferPtr,
                 materialByteSize,
                 0,
@@ -1820,7 +1803,7 @@ void VkApplication::loadGLB()
             _ctx.writeBuffer(
                 _stagingIndirectDrawBuffer,
                 _indirectDrawB,
-                _cmdBuffersForIO[0],
+                cmdBuffersForIO[0],
                 indirectDrawBufferPtr,
                 indirectDrawBufferByteSize,
                 0,

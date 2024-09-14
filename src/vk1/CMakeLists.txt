@@ -7,3 +7,4 @@ target_include_directories(vk1 PUBLIC .)
 target_include_directories(vk1 PUBLIC ${SDL2_INCLUDE_DIRS} )
 target_link_libraries(vk1 ${Vulkan_LIBRARIES} volk_headers ${RequiredVulkanSDKLIBS} vkEngine)
 
+target_compile_definitions(vk1 PUBLIC -DGLM_ENABLE_EXPERIMENTAL)

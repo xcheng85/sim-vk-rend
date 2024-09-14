@@ -65,7 +65,7 @@ struct AndroidNativeWindowDeleter
 #endif
 
 class Window;
-class Camera;
+class CameraBase;
 class VkContext;
 class VkApplication
 {
@@ -83,7 +83,7 @@ public:
     VkApplication() = delete;
     VkApplication(
         VkContext &ctx,
-        const Camera &camera,
+        const CameraBase &camera,
         const std::string &model)
         : _ctx(ctx), _camera(camera), _model(model)
     {
@@ -131,7 +131,7 @@ private:
     void postHostDeviceIO();
 
     VkContext &_ctx;
-    const Camera &_camera;
+    const CameraBase& _camera;
     std::string _model;
 
     // ownership of resource

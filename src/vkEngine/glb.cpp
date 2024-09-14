@@ -333,8 +333,8 @@ void readMeshes(const Microsoft::glTF::Document &document,
                             //                                 vertex.vz);
                             vertex.transform(m);
 
-                            log(Level::Info, "After Transform:", vertex.vx, ",", vertex.vy,
-                                ",", vertex.vz);
+                            // log(Level::Info, "After Transform:", vertex.vx, ",", vertex.vy,
+                            //     ",", vertex.vz);
 
                             currMesh.vertices.emplace_back(vertex);
                             // To Do: calculating Bounding Volumes

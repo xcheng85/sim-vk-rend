@@ -82,6 +82,14 @@ FetchContent_Populate(stb)
 FetchContent_MakeAvailable(stb)
 
 
+FetchContent_Declare(
+    glm
+    GIT_REPOSITORY https://github.com/g-truc/glm.git
+    GIT_TAG 0.9.9.8
+)
+FetchContent_MakeAvailable(glm)
+include_directories(${glm_SOURCE_DIR})
+
 # for experimental/future
 #GCC provides experimental support for the upcoming ISO C++ standard, C++0x. 
 #This support can be enabled with the -std=c++0x or -std=gnu++0x compiler options; 

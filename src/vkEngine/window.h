@@ -3,7 +3,8 @@
 #include <format>
 #include <SDL.h>
 #include <SDL_vulkan.h>
-#include <camera.h>
+#include <SDL_video.h>
+#include <cameraBase.h>
 
 using namespace std;
 
@@ -31,7 +32,7 @@ class Window
 {
 public:
     Window() = delete;
-    Window(void *configuration, Camera &camera) : _camera{camera}
+    Window(void *configuration, CameraBase &camera) : _camera{camera}
     {
         const auto &config = *(static_cast<WindowConfig *>(configuration));
         if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
@@ -45,10 +46,15 @@ public:
         SDL_DisplayMode current;
         SDL_GetCurrentDisplayMode(0, &current);
 
+        
+
         SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
         _window = SDL_CreateWindow(config.title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, config.width, config.height, window_flags);
         int w, h;
         SDL_Vulkan_GetDrawableSize(_window, &w, &h);
+        SDL_SetWindowFullscreen(_window, 0);
+        _winDimension[COMPONENT::X] = w;
+        _winDimension[COMPONENT::Y] = h;
     }
     void shutdown()
     {
@@ -71,54 +77,64 @@ public:
                 case SDLK_ESCAPE:
                     gRunning = false;
                     break;
-                case SDLK_w:
-                    _camera.handleKeyboardEvent(Camera::CameraActionType::FORWARD, gDt);
-                    break;
-                case SDLK_s:
-                    _camera.handleKeyboardEvent(Camera::CameraActionType::BACKWARD, gDt);
-                    break;
-                case SDLK_a:
-                    _camera.handleKeyboardEvent(Camera::CameraActionType::LEFT, gDt);
-                    break;
-                case SDLK_d:
-                    _camera.handleKeyboardEvent(Camera::CameraActionType::RIGHT, gDt);
-                    break;
+                    // case SDLK_w:
+                    //     _camera.handleKeyboardEvent(Camera::CameraActionType::FORWARD, gDt);
+                    //     break;
+                    // case SDLK_s:
+                    //     _camera.handleKeyboardEvent(Camera::CameraActionType::BACKWARD, gDt);
+                    //     break;
+                    // case SDLK_a:
+                    //     _camera.handleKeyboardEvent(Camera::CameraActionType::LEFT, gDt);
+                    //     break;
+                    // case SDLK_d:
+                    //     _camera.handleKeyboardEvent(Camera::CameraActionType::RIGHT, gDt);
+                    //     break;
                 }
                 break;
-
-            // case SDL_MOUSEBUTTONDOWN:
-            //     switch (event.button.button)
-            //     {
-            //     case SDL_BUTTON_LEFT:
-            //         SDL_ShowSimpleMessageBox(0, "Mouse", "Left button was pressed!", _window);
-            //         break;
-            //     case SDL_BUTTON_RIGHT:
-            //         SDL_ShowSimpleMessageBox(0, "Mouse", "Right button was pressed!", _window);
-            //         break;
-            //     default:
-            //         SDL_ShowSimpleMessageBox(0, "Mouse", "Some other button was pressed!", _window);
-            //         break;
-            //     }
-            //     break;
+            case SDL_MOUSEBUTTONDOWN:
+                // switch (event.button.button)
+                // {
+                // case SDL_BUTTON_LEFT:
+                //     SDL_ShowSimpleMessageBox(0, "Mouse", "Left button was pressed!", _window);
+                //     break;
+                // case SDL_BUTTON_RIGHT:
+                //     SDL_ShowSimpleMessageBox(0, "Mouse", "Right button was pressed!", _window);
+                //     break;
+                // default:
+                //     SDL_ShowSimpleMessageBox(0, "Mouse", "Some other button was pressed!", _window);
+                //     break;
+                // }
+                _camera.handleMouseClickEvent(
+                    event.button.button,
+                    event.button.state,
+                    event.button.x,
+                    event.button.y);
+                break;
             case SDL_MOUSEMOTION:
-                int mouseX = event.motion.x;
-                int mouseY = event.motion.y;
-
-                if (_firstMouseCursor)
-                {
-                    _lastMouseCursorX = mouseX;
-                    _lastMouseCursorY = mouseY;
-                    _firstMouseCursor = false;
-                }
-
-                float dx = mouseX - _lastMouseCursorX;
-                float dy = _lastMouseCursorY - mouseY; // screen space is opposite to camera space
-
-                _lastMouseCursorX = mouseX;
-                _lastMouseCursorY = mouseY;
-
-                _camera.handleMouseCursorEvent(dx, dy);
+                _camera.handleMouseCursorEvent(
+                    event.button.button,
+                    event.motion.state,
+                    vec2i(std::array<int32_t, 2>({event.motion.x,
+                                                  event.motion.y})),
+                    _winDimension);
                 break;
+            case SDL_MOUSEWHEEL:
+                _camera.handleMouseWheelEvent(event.wheel.y * 0.1);
+                break;
+            case SDL_WINDOWEVENT:
+                if (event.window.event == SDL_WINDOWEVENT_RESIZED)
+                {
+                    _winDimension[COMPONENT::X] = event.window.data1;
+                    _winDimension[COMPONENT::Y] = event.window.data2;
+                }
+                break;
+
+                //  if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED) {
+                //                 win_width = event.window.data1;
+                //                 win_height = event.window.data2;
+                //                 proj = glm::perspective(
+                //                     glm::radians(65.f), static_cast<float>(win_width) / win_height, 0.1f, 500.f);
+                //             }
             }
         }
     }
@@ -129,8 +145,10 @@ public:
 
 private:
     SDL_Window *_window;
-    Camera &_camera;
-    bool _firstMouseCursor{true};
-    int _lastMouseCursorX;
-    int _lastMouseCursorY;
+    CameraBase &_camera;
+    vec2i _winDimension{0};
+
+    // bool _firstMouseCursor{true};
+    // int _lastMouseCursorX;
+    // int _lastMouseCursorY;
 };

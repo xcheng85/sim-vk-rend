@@ -2,7 +2,10 @@
 #include <application.h>
 #include <window.h>
 #include <context.h>
-#include <camera.h>
+#include <cameraBase.h>
+
+#include <glm/ext.hpp>
+#include <glm/glm.hpp>
 
 #define VK_NO_PROTOTYPES // for volk
 #define VOLK_IMPLEMENTATION
@@ -253,20 +256,27 @@ void VkApplication::updateUniformBuffer(int currentFrameId)
     auto vmaAllocation = std::get<1>(_uniformBuffers[currentFrameId]);
 
     auto view = _camera.viewTransformLH();
-    auto persPrj = PerspectiveProjectionTransformLH(0.0001f, 200.0f, 0.3f,
-                                                    (float)swapChainExtent.width /
-                                                        (float)swapChainExtent.height);
+    // auto persPrj = PerspectiveProjectionTransformLH(0.0001f, 200.0f, 0.3f,
+    //                                                 (float)swapChainExtent.width /
+    //                                                     (float)swapChainExtent.height);
 
-    mat4x4f identity(1.0f);
-    auto mv = MatrixMultiply4x4(identity, view);
-    auto vp = MatrixMultiply4x4(view, persPrj);
-    auto mvp = MatrixMultiply4x4(identity, vp);
+    // use glm
+    auto proj = glm::perspective(glm::radians(65.f), static_cast<float>(swapChainExtent.width) / swapChainExtent.height, 0.1f, 500.f);
+                                                             
+    // mat4x4f identity(1.0f);
+    // auto mv = MatrixMultiply4x4(identity, view);
+    // auto vp = MatrixMultiply4x4(view, persPrj);
+    // auto mvp = MatrixMultiply4x4(identity, vp);
+
+    // UniformDataDef1 ubo;
+    // ubo.viewPos = _camera.viewPos();
+    // ubo.modelView = mv;
+    // ubo.projection = persPrj;
+    // ubo.mvp = mvp;
 
     UniformDataDef1 ubo;
     ubo.viewPos = _camera.viewPos();
-    ubo.modelView = mv;
-    ubo.projection = persPrj;
-    ubo.mvp = mvp;
+    ubo.mvp = proj * view;
 
     void *mappedMemory{nullptr};
     VK_CHECK(vmaMapMemory(vmaAllocator, vmaAllocation, &mappedMemory));

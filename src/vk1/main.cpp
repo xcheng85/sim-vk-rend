@@ -29,6 +29,9 @@
 
 #include <application.h>
 #include <context.h>
+// #include <camera.h>
+// #include <orbitCamera.h>
+#include <arcballCamera.h>
 
 bool gRunning = true;
 double gDt{0};
@@ -154,26 +157,40 @@ int main(int argc, char **argv)
     //      -97.f                                            // initial yaw
     //  };
 
+    // // BarramundiFish
+    // Camera _camera{
+    //     vec3f(std::array{0.4238983f, -0.142875f, 3.6f}),        // pos
+    //     vec3f(std::array{0.00238983f, -0.142875f, 0.00381729f}), // target -z
+    //     vec3f(std::array{0.0f, 1.f, 0.f}),                     // initial world up
+    //     0.0f,                                                    // initial pitch
+    //     -97.f                                                    // initial yaw
+    // };
+
+    // // BarramundiFish
+    // OrbitCamera _orbitCamera{
+    //     vec3f(std::array{0.0038983f, -0.142875f, 2.6f}),        // pos
+    //     vec3f(std::array{0.00238983f, -0.142875f, 0.1381729f}), // target -z
+    //     vec3f(std::array{0.0f, 1.f, 0.f}),                     // initial world up
+    // };
+
     // BarramundiFish
-     Camera _camera{
-         vec3f(std::array{0.00238983f, -0.142875f, 0.6f}),        // pos
-         vec3f(std::array{0.00238983f, -0.142875f, 0.00381729f}), // target -z
-         vec3f(std::array{0.0f, 0.0f, 1.0f}),                     // initial world up
-         0.0f,                                                    // initial pitch
-         -97.f                                                    // initial yaw
-     };
+    ArcballCamera _orbitCamera{
+        glm::vec3(0.0038983f, -0.142875f, 0.6f),        // pos
+        glm::vec3(0.00238983f, -0.142875f, 0.1381729f), // target -z
+        glm::vec3(0.0f, 1.f, 0.f),                      // initial world up
+    };
 
     //// CarbonFibre
-    //Camera _camera{
-    //    vec3f(std::array{0.00238983f, -0.142875f, 0.6f}),        // pos
-    //    vec3f(std::array{0.00238983f, -0.142875f, 0.00381729f}), // target -z
-    //    vec3f(std::array{0.0f, 0.0f, 1.0f}),                     // initial world up
-    //    0.0f,                                                    // initial pitch
-    //    -97.f                                                    // initial yaw
-    //};
-    WindowConfig cfg{1920, 1080, "demo"s};
+    // Camera _camera{
+    //     vec3f(std::array{0.00238983f, -0.142875f, 0.6f}),        // pos
+    //     vec3f(std::array{0.00238983f, -0.142875f, 0.00381729f}), // target -z
+    //     vec3f(std::array{0.0f, 0.0f, 1.0f}),                     // initial world up
+    //     0.0f,                                                    // initial pitch
+    //     -97.f                                                    // initial yaw
+    // };
+    WindowConfig cfg{1280, 720, "demo"s};
 
-    Window window(&cfg, _camera);
+    Window window(&cfg, _orbitCamera);
 
     VK_CHECK(volkInitialize());
     // c api
@@ -207,13 +224,13 @@ int main(int argc, char **argv)
     };
 
     VkContext ctx(window,
-        instanceValidationLayers,
-        instanceExtensions,
-        deviceExtensions);
+                  instanceValidationLayers,
+                  instanceExtensions,
+                  deviceExtensions);
 
     VkApplication vkApp(
         ctx,
-        _camera,
+        _orbitCamera,
         "BarramundiFish.glb"s);
     vkApp.init();
 
@@ -229,9 +246,8 @@ int main(int argc, char **argv)
         gDt = static_cast<double>(
             (currTime - gLastFrame) / static_cast<double>(SDL_GetPerformanceFrequency()));
         gLastFrame = currTime;
-
-        vkApp.renderPerFrame();
         window.pollEvents();
+        vkApp.renderPerFrame();
     }
 
     vkApp.teardown();

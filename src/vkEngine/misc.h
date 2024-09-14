@@ -17,6 +17,10 @@
 
 #include <vector.h>
 #include <matrix.h>
+#include <quaternion.h>
+#include <glm/ext.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtx/transform.hpp>
 
 enum Level
 {
@@ -81,10 +85,12 @@ struct UniformDataDef0
 
 struct UniformDataDef1
 {
-    mat4x4f projection;
-    mat4x4f modelView;
-    mat4x4f mvp;
-    vec3f viewPos;
+    // mat4x4f projection;
+    // mat4x4f modelView;
+    // mat4x4f mvp;
+    // vec3f viewPos;
+    glm::mat4 mvp;
+    glm::vec3 viewPos;
     float lodBias = 0.0f;
 };
 
@@ -169,3 +175,9 @@ void setCorrlationId(T handle, VkDevice logicalDevice, VkObjectType type, const 
 VkImageViewType getImageViewType(VkImageType imageType);
 uint32_t get2DImageSizeInBytes(VkExtent2D extent, VkFormat imageType);
 uint32_t get3DImageSizeInBytes(VkExtent3D extent, VkFormat imageType);
+
+inline vec2f screenSpace2Ndc(vec2i screenspaceCoord, vec2i screenDimension)
+{
+    return vec2f(std::array<float, 2>({static_cast<float>(screenspaceCoord[COMPONENT::X]) * 2.f / screenDimension[COMPONENT::X] - 1.f,
+                                       1.f - 2.f * static_cast<float>(screenspaceCoord[COMPONENT::Y]) / screenDimension[COMPONENT::Y]}));
+}

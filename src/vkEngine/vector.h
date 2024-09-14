@@ -1,6 +1,6 @@
 #pragma once
 #include <cstring> // memset
-#include <cmath> // sin, cos
+#include <cmath>   // sin, cos
 #include <cstdint>
 #include <initializer_list>
 #include <numeric>
@@ -25,105 +25,146 @@ enum COMPONENT : int
 template <typename T, size_t N, size_t Alignment = 16>
 struct alignas(Alignment) vec
 {
-T data[N];
-vec() {
-    memset(data, 0, sizeof(T) * N);
-};
-vec(const vec &) = default;
-vec(vec &&) noexcept = default;
-vec &operator=(const vec &) = default;
-vec &operator=(vec &&) noexcept = default;
-
-vec(const std::array<T, N> &a)
-{
-    int dst{0};
-    for (const auto &v : a)
+    T data[N];
+    vec()
     {
-        data[dst++] = v;
+        memset(data, 0, sizeof(T) * N);
+    };
+    vec(const vec &other)
+    {
+        for (int i = 0; i < N; i++)
+        {
+            data[i] = other.data[i];
+        }
     }
-}
+    vec(vec &&other) noexcept
+    {
+        for (int i = 0; i < N; i++)
+        {
+            data[i] = other.data[i];
+        }
+    }
+    vec &operator=(const vec &other)
+    {
+        for (int i = 0; i < N; i++)
+        {
+            data[i] = other.data[i];
+        }
+        return *this;
+    }
+    vec &operator=(vec &&) noexcept = default;
+
+    vec(const std::array<T, N> &a)
+    {
+        int dst{0};
+        for (const auto &v : a)
+        {
+            data[dst++] = v;
+        }
+    }
+
+    vec(T a)
+    {
+        for (int i = 0; i < N; i++)
+        {
+            data[i] = a;
+        }
+    }
 
 // compiler defined macro: indicate c++ version
 #if (__cplusplus >= 202002L)
-bool operator==(const vec &) const = default;
+    bool operator==(const vec &) const = default;
     auto operator<=>(const vec &) const = default;
 #endif
 
-T &operator[](COMPONENT index)
-{
-    return data[index];
-}
-
-T operator[](COMPONENT index) const
-{
-    return data[index];
-}
-
-vec &operator-(const vec &other)
-{
-    for (int i = 0; i < N; i++)
+    T &operator[](COMPONENT index)
     {
-        data[i] -= other.data[i];
+        return data[index];
     }
-    return *this;
-}
 
-vec &operator+=(const vec &other)
-{
-    for (int i = 0; i < N; i++)
+    T operator[](COMPONENT index) const
     {
-        data[i] += other.data[i];
+        return data[index];
     }
-    return *this;
-}
 
-vec &operator-=(const vec &other)
-{
-    for (int i = 0; i < N; i++)
+    vec &operator-(const vec &other)
     {
-        data[i] -= other.data[i];
+        for (int i = 0; i < N; i++)
+        {
+            data[i] -= other.data[i];
+        }
+        return *this;
     }
-    return *this;
-}
 
-vec &operator*=(const T &s)
-{
-    for (int i = 0; i < N; i++)
+    vec &operator+=(const vec &other)
     {
-        data[i] *= s;
+        for (int i = 0; i < N; i++)
+        {
+            data[i] += other.data[i];
+        }
+        return *this;
     }
-    return *this;
-}
 
-vec &operator/=(const T &s)
-{
-    for (int i = 0; i < N; i++)
+    vec &operator-=(const vec &other)
     {
-        data[i] /= s;
+        for (int i = 0; i < N; i++)
+        {
+            data[i] -= other.data[i];
+        }
+        return *this;
     }
-    return *this;
-}
 
-double vectorLength() const noexcept
-{
-return sqrt(dotProduct(*this, *this));
-}
+    vec &operator*=(const T &s)
+    {
+        for (int i = 0; i < N; i++)
+        {
+            data[i] *= s;
+        }
+        return *this;
+    }
 
-void normalize() noexcept
-{
-auto vectorlength = vectorLength();
+    vec &operator/=(const T &s)
+    {
+        for (int i = 0; i < N; i++)
+        {
+            data[i] /= s;
+        }
+        return *this;
+    }
 
-if (vectorlength > 0)
-{
-vectorlength = 1.0f / vectorlength;
-}
+    double vectorLength() const noexcept
+    {
+        return sqrt(dotProduct(*this, *this));
+    }
 
-data[0] *= vectorlength;
-data[1] *= vectorlength;
-data[2] *= vectorlength;
-data[3] *= vectorlength;
-}
+    void normalize() noexcept
+    {
+        auto vectorlength = vectorLength();
+
+        if (vectorlength > 0)
+        {
+            vectorlength = 1.0f / vectorlength;
+        }
+
+        data[0] *= vectorlength;
+        data[1] *= vectorlength;
+        data[2] *= vectorlength;
+        data[3] *= vectorlength;
+    }
 };
+
+template <typename T, size_t N, size_t Alignment>
+bool operator==(const vec<T, N, Alignment> &v1, const vec<T, N, Alignment> &v2)
+{
+    for (int i = 0; i < N; i++)
+    {
+        if (v1.data[i] != v2.data[i])
+        {
+            return false;
+        }
+    }
+    return true;
+}
 
 template <typename T, size_t N, size_t Alignment>
 inline vec<T, N, Alignment> operator+(const vec<T, N, Alignment> &v1, const vec<T, N, Alignment> &v2)
@@ -159,6 +200,17 @@ inline vec<T, N, Alignment> operator*(const vec<T, N, Alignment> &v, const T &s)
 }
 
 template <typename T, size_t N, size_t Alignment>
+inline vec<T, N, Alignment> operator*(const vec<T, N, Alignment> &v1, const vec<T, N, Alignment> &v2)
+{
+    vec<T, N, Alignment> res;
+    for (int i = 0; i < N; i++)
+    {
+        res.data[i] = v1.data[i] * v2.data[i];
+    }
+    return res;
+}
+
+template <typename T, size_t N, size_t Alignment>
 inline vec<T, N, Alignment> normalize(const vec<T, N, Alignment> &v)
 {
     vec<T, N, Alignment> res;
@@ -173,24 +225,38 @@ inline vec<T, N, Alignment> normalize(const vec<T, N, Alignment> &v)
 template <typename T, size_t N, size_t Alignment>
 inline double dotProduct(const vec<T, N, Alignment> &v1, const vec<T, N, Alignment> &v2) noexcept
 {
-float res{0.f};
-for (int i = 0; i < N; ++i)
-{
-res += v1.data[i] * v2.data[i];
-}
-return res;
+    float res{0.f};
+    for (int i = 0; i < N; ++i)
+    {
+        res += v1.data[i] * v2.data[i];
+    }
+    return res;
 }
 
 template <typename T>
 inline vec<T, 3, sizeof(T) * 4> crossProduct(const vec<T, 3, sizeof(T) * 4> &v1, const vec<T, 3, sizeof(T) * 4> &v2) noexcept
 {
-// similar to cramer's rule
-// [ V1.y*V2.z - V1.z*V2.y, V1.z*V2.x - V1.x*V2.z, V1.x*V2.y - V1.y*V2.x ]
-return vec<T, 3, sizeof(T) * 4>(std::array{
+    // similar to cramer's rule
+    // [ V1.y*V2.z - V1.z*V2.y, V1.z*V2.x - V1.x*V2.z, V1.x*V2.y - V1.y*V2.x ]
+    return vec<T, 3, sizeof(T) * 4>(std::array{
         v1[COMPONENT::Y] * v2[COMPONENT::Z] - v1[COMPONENT::Z] * v2[COMPONENT::Y],
         v1[COMPONENT::Z] * v2[COMPONENT::X] - v1[COMPONENT::X] * v2[COMPONENT::Z],
         v1[COMPONENT::X] * v2[COMPONENT::Y] - v1[COMPONENT::Y] * v2[COMPONENT::X],
-});
+    });
+}
+
+template <typename T, size_t N, size_t Alignment>
+inline vec<T, N, Alignment> clamp(
+    const vec<T, N, Alignment> &v,
+    const vec<T, N, Alignment> &minV,
+    const vec<T, N, Alignment> &maxV) noexcept
+{
+    vec<T, N, Alignment> res;
+    for (int i = 0; i < N; i++)
+    {
+        res.data[i] = std::min(maxV.data[i], std::max(v.data[i], minV.data[i]));
+    }
+    return res;
 }
 
 template <typename T, size_t N, size_t Alignment>
@@ -213,6 +279,8 @@ inline T *value_ptr(vec<T, N, Alignment> &v)
 }
 
 // 8 byte
+using vec2ui = vec<uint32_t, 2, 8>;
+using vec2i = vec<int32_t, 2, 8>;
 using vec2f = vec<float, 2, 8>;
 // 12 byte --> 16
 using vec3f = vec<float, 3, 16>;

@@ -57,6 +57,18 @@ struct mat
         }
     }
 
+    mat(const vec<T, N, Alignment / N> (&v)[N])
+    {
+        for (size_t c = 0; c < N; ++c)
+        {
+            for (size_t r = 0; r < N; ++r)
+            {
+                // column-major
+                data[c][r] = v[c].data[r];
+            }
+        }
+    }
+
     // diagnol
     mat(const T &v)
     {
@@ -65,6 +77,32 @@ struct mat
         {
             data[i][i] = v;
         }
+    }
+
+    void transpose()
+    {
+        // below the diagnal
+        for (int r = 1; r < N; ++r)
+        {
+            for (int c = 0; c < r; ++c)
+            {
+                auto tmp = data[r][c];
+                data[r][c] = data[c][r];
+                data[c][r] = tmp;
+            }
+        }
+    }
+
+    mat &operator*=(const T &s)
+    {
+        for (int r = 0; r < N; ++r)
+        {
+            for (int c = 0; c < N; ++c)
+            {
+                data[r][c] *= s;
+            }
+        }
+        return *this;
     }
 
     T operator()(size_t r, size_t c) const noexcept
@@ -97,6 +135,20 @@ inline std::ostream &operator<<(std::ostream &os, const mat<T, N, Alignment> &v)
 }
 
 template <typename T, size_t N, size_t Alignment>
+inline mat<T, N, Alignment> operator*(const mat<T, N, Alignment> &m, const T &s)
+{
+    mat<T, N, Alignment> res;
+    for (int r = 0; r < N; ++r)
+    {
+        for (int c = 0; c < N; ++c)
+        {
+            res.data[r][c] = m.data[r][c] * s;
+        }
+    }
+    return res;
+}
+
+template <typename T, size_t N, size_t Alignment>
 inline T *value_ptr(mat<T, N, Alignment> &v)
 {
     return &(v.data[0][0]);
@@ -105,7 +157,8 @@ inline T *value_ptr(mat<T, N, Alignment> &v)
 // 4 * 4
 using mat2x2f = mat<float, 2, 16>;
 
-using mat3x3f = mat<float, 3, 16>;
+// 9 * 4 and increase to 64
+using mat3x3f = mat<float, 3, 64>;
 
 // 16 * 4
 using mat4x4f = mat<float, 4, 64>;
@@ -113,6 +166,25 @@ using mat4x4f = mat<float, 4, 64>;
 // affine transformation
 // linear transformation (S + R) + translation (T)
 // not commutative
+
+// colum-major
+template <typename T>
+inline mat<T, 3, sizeof(T) * 16> MatrixMultiply3x3(const mat<T, 3, sizeof(T) * 16> &m1, const mat<T, 3, sizeof(T) * 16> &m2)
+{
+    mat<T, 3, sizeof(T) * 16> res;
+    for (int r = 0; r < 3; ++r)
+    {
+        auto x = m1.data[r][0];
+        auto y = m1.data[r][1];
+        auto z = m1.data[r][2];
+
+        res.data[r][0] = (m2.data[0][0] * x) + (m2.data[1][0] * y) + (m2.data[2][0] * z);
+        res.data[r][1] = (m2.data[0][1] * x) + (m2.data[1][1] * y) + (m2.data[2][1] * z);
+        res.data[r][2] = (m2.data[0][2] * x) + (m2.data[1][2] * y) + (m2.data[2][2] * z);
+    }
+
+    return res;
+}
 
 // colum-major
 template <typename T>
@@ -183,9 +255,9 @@ template <typename T>
 inline mat<T, 4, sizeof(T) * 16> MatrixScale4x4(const vec<T, 3, sizeof(T) * 4> &scaleVector)
 {
     return MatrixScale4x4(
-            scaleVector[COMPONENT::X],
-            scaleVector[COMPONENT::Y],
-            scaleVector[COMPONENT::Z]);
+        scaleVector[COMPONENT::X],
+        scaleVector[COMPONENT::Y],
+        scaleVector[COMPONENT::Z]);
 }
 
 template <typename T>
@@ -206,9 +278,9 @@ template <typename T>
 inline mat<T, 4, sizeof(T) * 16> MatrixTranslation4x4(const vec<T, 3, sizeof(T) * 4> &translationVector)
 {
     return MatrixTranslation4x4(
-            translationVector[COMPONENT::X],
-            translationVector[COMPONENT::Y],
-            translationVector[COMPONENT::Z]);
+        translationVector[COMPONENT::X],
+        translationVector[COMPONENT::Y],
+        translationVector[COMPONENT::Z]);
 }
 
 // to do: a 11-degree minimax approximation for sine; 10-degree for cosine.
@@ -426,4 +498,132 @@ inline mat<T, 4, sizeof(T) * 16> PerspectiveProjectionTransformLH(T near, T far,
     m.data[2][3] = static_cast<T>(1);
     m.data[3][2] = C;
     return m;
+}
+
+template <typename T, size_t N, size_t Alignment>
+inline mat<T, N, Alignment> Inverse(const mat<T, N, Alignment> &m);
+
+template <typename T>
+inline mat<T, 2, sizeof(T) * 4> Inverse(const mat<T, 2, sizeof(T) * 4> &m)
+{
+    // p.48: Introduction to 3D Game Programming with DirectX 12
+    // A^-1 = A ^ * / det(A)
+    T OneDevidedByDeterminant = static_cast<T>(1) / (m.data[0][0] * m.data[1][1] - m.data[1][0] * m.data[0][1]);
+    std::array<T, 4> cols{
+        m.data[1][1] * OneDevidedByDeterminant,
+        -m.data[0][1] * OneDevidedByDeterminant,
+        -m.data[1][0] * OneDevidedByDeterminant,
+        m.data[0][0] * OneDevidedByDeterminant};
+    mat<T, 2, sizeof(T) * 4> Inverse(cols);
+    return Inverse;
+}
+
+template <typename T>
+inline mat<T, 3, sizeof(T) * 16> Inverse(const mat<T, 3, sizeof(T) * 16> &m)
+{
+    // https://www.onlinemathstutor.org/post/3x3_inverses
+    // An easier way to find the inverse of a 3x3 matrix
+    // Finding the inverse of a 3x3 matrix using the vector (cross) product
+    // formular (5) as:
+    // Inverse = transpos(b x c, c x a, a x b) / det(m)
+    // det = dot(a, cross(b, c))
+
+    vec<T, 3, sizeof(T) * 4> a(std::array<T, 3>{m.data[0][0], m.data[0][1], m.data[0][2]});
+    vec<T, 3, sizeof(T) * 4> b(std::array<T, 3>{m.data[1][0], m.data[1][1], m.data[1][2]});
+    vec<T, 3, sizeof(T) * 4> c(std::array<T, 3>{m.data[2][0], m.data[2][1], m.data[2][2]});
+
+    vec<T, 3, sizeof(T) * 4> bc_cross = crossProduct(b, c);
+    vec<T, 3, sizeof(T) * 4> ca_cross = crossProduct(c, a);
+    vec<T, 3, sizeof(T) * 4> ab_cross = crossProduct(a, b);
+
+    T det = dotProduct(a, bc_cross);
+
+    // formula 5
+    std::array<T, 9> cols{
+        // COL1
+        bc_cross[COMPONENT::X],
+        bc_cross[COMPONENT::Y],
+        bc_cross[COMPONENT::Z],
+        // col2
+        ca_cross[COMPONENT::X],
+        ca_cross[COMPONENT::Y],
+        ca_cross[COMPONENT::Z],
+        // col3
+        ab_cross[COMPONENT::X],
+        ab_cross[COMPONENT::Y],
+        ab_cross[COMPONENT::Z],
+    };
+    mat<T, 3, sizeof(T) * 16> inverse(cols);
+    // formula 6
+    // inverse.transpose();
+    T OneDividedByDeterminant(static_cast<T>(1) / det);
+    return inverse * OneDividedByDeterminant;
+}
+
+template <typename T>
+inline mat<T, 4, sizeof(T) * 16> Inverse(const mat<T, 4, sizeof(T) * 16> &m)
+{
+    // cofactor of m,
+    // adjoint of m, m^* = transpose(Cofactor(m))
+    // det(m4*4) needs det(m3*3) needs det(m2*2)
+    // The determination of a matrix is defined recursively
+
+    // The following is for det(m3*3)
+    // page 47 of Introduction to 3d Game programming with Directx12
+    T Coef00 = m.data[2][2] * m.data[3][3] - m.data[3][2] * m.data[2][3];
+    T Coef02 = m.data[1][2] * m.data[3][3] - m.data[3][2] * m.data[1][3];
+    T Coef03 = m.data[1][2] * m.data[2][3] - m.data[2][2] * m.data[1][3];
+
+    T Coef04 = m.data[2][1] * m.data[3][3] - m.data[3][1] * m.data[2][3];
+    T Coef06 = m.data[1][1] * m.data[3][3] - m.data[3][1] * m.data[1][3];
+    T Coef07 = m.data[1][1] * m.data[2][3] - m.data[2][1] * m.data[1][3];
+
+    T Coef08 = m.data[2][1] * m.data[3][2] - m.data[3][1] * m.data[2][2];
+    T Coef10 = m.data[1][1] * m.data[3][2] - m.data[3][1] * m.data[1][2];
+    T Coef11 = m.data[1][1] * m.data[2][2] - m.data[2][1] * m.data[1][2];
+
+    T Coef12 = m.data[2][0] * m.data[3][3] - m.data[3][0] * m.data[2][3];
+    T Coef14 = m.data[1][0] * m.data[3][3] - m.data[3][0] * m.data[1][3];
+    T Coef15 = m.data[1][0] * m.data[2][3] - m.data[2][0] * m.data[1][3];
+
+    T Coef16 = m.data[2][0] * m.data[3][2] - m.data[3][0] * m.data[2][2];
+    T Coef18 = m.data[1][0] * m.data[3][2] - m.data[3][0] * m.data[1][2];
+    T Coef19 = m.data[1][0] * m.data[2][2] - m.data[2][0] * m.data[1][2];
+
+    T Coef20 = m.data[2][0] * m.data[3][1] - m.data[3][0] * m.data[2][1];
+    T Coef22 = m.data[1][0] * m.data[3][1] - m.data[3][0] * m.data[1][1];
+    T Coef23 = m.data[1][0] * m.data[2][1] - m.data[2][0] * m.data[1][1];
+
+    vec<T, 4, sizeof(T) * 4> Fac0({Coef00, Coef00, Coef02, Coef03});
+    vec<T, 4, sizeof(T) * 4> Fac1({Coef04, Coef04, Coef06, Coef07});
+    vec<T, 4, sizeof(T) * 4> Fac2({Coef08, Coef08, Coef10, Coef11});
+    vec<T, 4, sizeof(T) * 4> Fac3({Coef12, Coef12, Coef14, Coef15});
+    vec<T, 4, sizeof(T) * 4> Fac4({Coef16, Coef16, Coef18, Coef19});
+    vec<T, 4, sizeof(T) * 4> Fac5({Coef20, Coef20, Coef22, Coef23});
+
+    vec<T, 4, sizeof(T) * 4> Vec0({m.data[1][0], m.data[0][0], m.data[0][0], m.data[0][0]});
+    vec<T, 4, sizeof(T) * 4> Vec1({m.data[1][1], m.data[0][1], m.data[0][1], m.data[0][1]});
+    vec<T, 4, sizeof(T) * 4> Vec2({m.data[1][2], m.data[0][2], m.data[0][2], m.data[0][2]});
+    vec<T, 4, sizeof(T) * 4> Vec3({m.data[1][3], m.data[0][3], m.data[0][3], m.data[0][3]});
+
+    vec<T, 4, sizeof(T) * 4> Inv0(Vec1 * Fac0 - Vec2 * Fac1 + Vec3 * Fac2);
+    vec<T, 4, sizeof(T) * 4> Inv1(Vec0 * Fac0 - Vec2 * Fac3 + Vec3 * Fac4);
+    vec<T, 4, sizeof(T) * 4> Inv2(Vec0 * Fac1 - Vec1 * Fac3 + Vec3 * Fac5);
+    vec<T, 4, sizeof(T) * 4> Inv3(Vec0 * Fac2 - Vec1 * Fac4 + Vec2 * Fac5);
+
+    vec<T, 4, sizeof(T) * 4> SignA({+1, -1, +1, -1});
+    vec<T, 4, sizeof(T) * 4> SignB({-1, +1, -1, +1});
+
+    vec<T, 4, sizeof(T) * 4> v[4] = {
+        Inv0 * SignA, Inv1 * SignB, Inv2 * SignA, Inv3 * SignB};
+
+    mat<T, 4, sizeof(T) * 16> inverse(v);
+
+    vec<T, 4, sizeof(T) * 4> row0({inverse.data[0][0], inverse.data[1][0], inverse.data[2][0], inverse.data[3][0]});
+    vec<T, 4, sizeof(T) * 4> col0({m.data[0][0], m.data[0][1], m.data[0][2], m.data[0][3]});
+    vec<T, 4, sizeof(T) * 4> dot0 = row0 * col0;
+
+    T dot1 = (dot0[COMPONENT::X] + dot0[COMPONENT::Y]) + (dot0[COMPONENT::Z] + dot0[COMPONENT::W]);
+    T OneDividedByDet = static_cast<T>(1) / dot1;
+    return inverse * OneDividedByDet;
 }

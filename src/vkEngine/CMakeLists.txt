@@ -14,6 +14,9 @@ target_link_libraries(
     ${Vulkan_LIBRARIES} volk_headers ${RequiredVulkanSDKLIBS}
 )
 
+#glm
+target_compile_definitions(vkEngine PUBLIC -DGLM_ENABLE_EXPERIMENTAL)
+
 target_include_directories(vkEngine PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
   "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/core/utility>"

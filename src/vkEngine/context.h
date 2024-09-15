@@ -156,6 +156,15 @@ public:
         const std::unordered_map<VkDescriptorType, uint32_t> &dsBudgets,
         uint32_t dsCap = 100);
 
+    std::tuple<VkPipeline, VkPipelineLayout> createGraphicsPipeline(
+        std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, 
+        const char*,
+        // std::string, /** dangling pointer issues */
+        const VkSpecializationInfo *>> vsShaderEntities,
+        const std::vector<VkDescriptorSetLayout>& dsLayouts,
+        const VkRenderPass& renderPass
+    );
+
     std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> allocateDescriptorSet(
         const VkDescriptorPool pool,
         const std::unordered_map<VkDescriptorSetLayout *, uint32_t> &dsAllocation);
@@ -229,7 +238,7 @@ public:
 
     void present(uint32_t swapChainImageIndex);
 
-    uint32_t getSwapChainImageIndexToRender() const; 
+    uint32_t getSwapChainImageIndexToRender() const;
 
     // features chains
     // now is to toggle features selectively

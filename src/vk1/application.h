@@ -156,9 +156,7 @@ private:
     std::vector<std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo>> _uniformBuffers;
 
     // graphics pipeline
-    // for multiple sets + bindings
-    VkPipelineLayout _pipelineLayout;
-    VkPipeline _graphicsPipeline;
+    std::tuple<VkPipeline, VkPipelineLayout> _graphicsPipelineEntity;
 
     // vao, vbo, index buffer
     uint32_t _indexCount{0};

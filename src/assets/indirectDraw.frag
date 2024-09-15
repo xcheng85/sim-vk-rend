@@ -10,6 +10,8 @@ layout(location = 2) in flat int inMaterialId;
 
 layout(location = 0) out vec4 outFragColor;
 
+layout(constant_id = 0) const int LIGHTING_MODEL = 0;
+
 void main()
 {
   int basecolorTextureId = 0;
@@ -23,8 +25,19 @@ void main()
 
   // -1 is from glb io reader
   if (basecolorTextureId != -1) {
-    // create the sampler2D first
-    outFragColor = texture(sampler2D(BindlessImage2D[basecolorTextureId], BindlessSampler), inTexCoord);
+    switch (LIGHTING_MODEL) {
+      case 0: // texture			
+      {
+        // create the sampler2D first
+        outFragColor = texture(sampler2D(BindlessImage2D[basecolorTextureId], BindlessSampler), inTexCoord);
+        break;
+      }
+      case 1: // flat			
+      {
+        outFragColor = vec4(0.5, 0.5, 0.5, 1.0);
+        break;
+      }
+    }
   } else {
     outFragColor = vec4(0.5, .5, 0.5, 1.0);
   }

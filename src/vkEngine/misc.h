@@ -94,6 +94,11 @@ struct UniformDataDef1
     float lodBias = 0.0f;
 };
 
+struct SpecializationDataDef1
+{
+    uint32_t lightingModel{0};
+};
+
 //// mimic vao in opengl
 // struct VAO {
 //     VkBuffer vertexBuffer;

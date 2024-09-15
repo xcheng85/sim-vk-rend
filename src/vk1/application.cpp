@@ -19,6 +19,18 @@ static constexpr int MAX_DESCRIPTOR_SETS = 1 * MAX_FRAMES_IN_FLIGHT + 1 + 4;
 
 void VkApplication::init()
 {
+    const auto handleUploadTextureTask = [this]()
+    {
+        while (true)
+        {
+            std::packaged_task<uploadTextureFn> task;
+            _asyncTaskQueue.bpop(task);
+            task();
+            std::this_thread::sleep_for(2s);
+        }
+    };
+    _handleUploadTextureTaskFuture = std::async(std::launch::async, handleUploadTextureTask);
+
     _ctx.createSwapChain();
     _swapChainRenderPass = _ctx.createSwapChainRenderPass();
     _ctx.initDefaultCommandBuffers();
@@ -1149,6 +1161,18 @@ void VkApplication::postHostDeviceIO()
 //     //            VMA_MEMORY_USAGE_GPU_ONLY, "vertex"));
 // }
 
+inline void uploadTextureToGPU(
+    const std::string &name,
+    VkDeviceSize bufferSizeInBytes,
+    const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
+    const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
+    const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
+    void *rawData)
+{
+    log(Level::Info, "uploadTextureToGPU : ", name);
+    std::this_thread::sleep_for(5s);
+}
+
 void VkApplication::loadGLB()
 {
     const auto vk12FeatureCaps = _ctx.getVk12FeatureCaps();
@@ -1317,6 +1341,23 @@ void VkApplication::loadGLB()
                 _glbImageEntities.back(),
                 _glbImageStagingBuffers.back(),
                 cmdBuffersForIO);
+
+            // use case of packaged_task
+            // bind the arguments directly before you construct the task,
+            // in which case the task itself now has a signature that takes no arguments
+            std::packaged_task<uploadTextureFn> task(std::bind(
+                &uploadTextureToGPU,
+                "Staging Buffer Texture " + std::to_string(textureId),
+                stagingBufferSizeForImage,
+                _glbImageEntities.back(),
+                _glbImageStagingBuffers.back(),
+                cmdBuffersForIO,
+                texture->data));
+
+            std::future futureHandle = task.get_future();
+            // cache the future for retrieve in the future action.
+            _asyncUploadTextureTaskFutures.emplace_back(std::move(futureHandle));
+            _asyncTaskQueue.push(std::move(task));
 
             ++textureId;
         }

@@ -84,6 +84,8 @@
         "xmemory": "cpp",
         "xtr1common": "cpp",
         "xtree": "cpp",
-        "any": "cpp"
+        "any": "cpp",
+        "resumable": "cpp",
+        "future": "cpp"
     }
 }

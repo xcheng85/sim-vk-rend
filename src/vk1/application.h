@@ -43,6 +43,8 @@
 
 #include <misc.h>
 #include <glb.h>
+#include <queuethreadsafe.h>
+#include <future> //packaged_task<>
 
 #if defined(__ANDROID__)
 // functor for custom deleter for unique_ptr
@@ -117,7 +119,7 @@ private:
     void createCommandBuffer();
     void recordCommandBuffer(
         uint32_t currentFrameId,
-        VkCommandBuffer commandBuffer, 
+        VkCommandBuffer commandBuffer,
         uint32_t imageIndex);
     void createPerFrameSyncObjects();
 
@@ -131,7 +133,7 @@ private:
     void postHostDeviceIO();
 
     VkContext &_ctx;
-    const CameraBase& _camera;
+    const CameraBase &_camera;
     std::string _model;
 
     // ownership of resource
@@ -199,4 +201,18 @@ private:
 
     // samplers in the glb scene
     std::vector<std::tuple<VkSampler>> _glbSamplerEntities;
+
+    // async programming with packaged
+    // const std::string &name,
+    // VkDeviceSize bufferSizeInBytes
+    // const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
+    // const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
+    // const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
+    // void *rawData
+
+    using uploadTextureFn = void(void);
+    QueueThreadSafe<std::packaged_task<uploadTextureFn>> _asyncTaskQueue;
+    std::vector<std::future<void>> _asyncUploadTextureTaskFutures;
+
+    std::future<void> _handleUploadTextureTaskFuture;
 };

@@ -43,6 +43,7 @@
 
 #include <misc.h>
 #include <glb.h>
+#include <context.h>
 #include <queuethreadsafe.h>
 #include <future> //packaged_task<>
 
@@ -129,7 +130,9 @@ private:
     void loadTextures();
 
     // io reader
+    void preloadGLB();
     void loadGLB();
+    void loadGLBTextureAsync();
     void postHostDeviceIO();
 
     VkContext &_ctx;
@@ -155,7 +158,7 @@ private:
     std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> _descriptorSets;
 
     // resource
-    std::vector<std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo>> _uniformBuffers;
+    std::vector<BufferEntity> _uniformBuffers;
 
     // graphics pipeline
     std::tuple<VkPipeline, VkPipelineLayout> _graphicsPipelineEntity;
@@ -175,17 +178,18 @@ private:
     VkBuffer _stagingImageBuffer{VK_NULL_HANDLE};
 
     // glb scene
+    std::shared_ptr<Scene> _scene; 
     // a lot of stageBuffers
-    std::vector<std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo>> _stagingVbForMesh;
-    std::vector<std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo>> _stagingIbForMesh;
-    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> _stagingIndirectDrawBuffer;
-    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> _stagingMatBuffer;
+    std::vector<BufferEntity> _stagingVbForMesh;
+    std::vector<BufferEntity> _stagingIbForMesh;
+    BufferEntity _stagingIndirectDrawBuffer;
+    BufferEntity _stagingMatBuffer;
 
     // device buffer
-    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> _compositeVB;
-    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> _compositeIB;
-    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> _compositeMatB;
-    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> _indirectDrawB;
+    BufferEntity _compositeVB;
+    BufferEntity _compositeIB;
+    BufferEntity _compositeMatB;
+    BufferEntity _indirectDrawB;
 
     // each buffer's size is needed when bindResourceToDescriptorSet
     uint32_t _compositeVBSizeInByte;
@@ -194,25 +198,23 @@ private:
     uint32_t _indirectDrawBSizeInByte;
     // number of meshes in the scene
     uint32_t _numMeshes;
+    uint32_t _numTextures;
 
     // textures in the glb scene
-    std::vector<std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat>> _glbImageEntities;
-    std::vector<std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo>> _glbImageStagingBuffers;
+    std::vector<ImageEntity> _glbImageEntities;
+    std::vector<BufferEntity> _glbImageStagingBuffers;
 
     // samplers in the glb scene
     std::vector<std::tuple<VkSampler>> _glbSamplerEntities;
 
-    // async programming with packaged
-    // const std::string &name,
-    // VkDeviceSize bufferSizeInBytes
-    // const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
-    // const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
-    // const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
-    // void *rawData
-
     using uploadTextureFn = void(void);
     QueueThreadSafe<std::packaged_task<uploadTextureFn>> _asyncTaskQueue;
     std::vector<std::future<void>> _asyncUploadTextureTaskFutures;
-
     std::future<void> _handleUploadTextureTaskFuture;
+
+    QueueThreadSafe<std::packaged_task<void(void)>> _asyncTaskQueueForGenMipmaps;
+    std::future<void> _handleTextureGenMipmapTaskFuture;
+
+    // a release and acquire pair is performed by a VkSemaphore
+    std::vector<VkSemaphore> _asyncTransferSemaphorePool;
 };

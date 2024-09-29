@@ -67,10 +67,29 @@ enum COMMAND_SEMANTIC : int
 {
     RENDERING = 0,
     IO,
+    MIPMAP,
+    TRANSFER,
     COMMAND_SEMANTIC_SIZE
 };
 
 class Window;
+
+using CommandBufferEntity = std::tuple<VkCommandPool, VkCommandBuffer, VkFence, uint32_t, VkQueue>;
+
+using ImageEntity = std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat>;
+
+enum IMAGE_ENTITY_OFFSET : int
+{
+    IMAGE = 0,
+    IMAGE_VIEW,
+    MIPMAP_COUNT = 4,
+    IMAGE_EXTENT,
+    IMAGE_FORMAT
+};
+
+using MappingAddressType = void*;
+using BufferEntity = std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo, MappingAddressType>;
+
 class VkContext
 {
     class Impl;
@@ -105,37 +124,37 @@ public:
 
     void initDefaultCommandBuffers();
 
-    std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> createGraphicsCommandBuffers(
+    std::vector<CommandBufferEntity> createGraphicsCommandBuffers(
         const std::string &name,
         uint32_t count,
         uint32_t inflightCount,
         VkFenceCreateFlags flags);
 
-    std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> createTransferCommandBuffers(
+    std::vector<CommandBufferEntity> createTransferCommandBuffers(
         const std::string &name,
         uint32_t count,
         uint32_t inflightCount,
         VkFenceCreateFlags flags);
 
-    void BeginRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer);
-    void EndRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer);
+    void BeginRecordCommandBuffer(CommandBufferEntity &cmdBuffer);
+    void EndRecordCommandBuffer(CommandBufferEntity &cmdBuffer);
 
-    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> createPersistentBuffer(
+    BufferEntity createPersistentBuffer(
         const std::string &name,
         VkDeviceSize bufferSizeInBytes,
         VkBufferUsageFlags bufferUsageFlag);
 
-    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> createStagingBuffer(
+    BufferEntity createStagingBuffer(
         const std::string &name,
         VkDeviceSize bufferSizeInBytes);
 
     // device local buffer
-    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> createDeviceLocalBuffer(
+    BufferEntity createDeviceLocalBuffer(
         const std::string &name,
         VkDeviceSize bufferSizeInBytes,
         VkBufferUsageFlags bufferUsageFlag);
 
-    std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> createImage(
+    ImageEntity createImage(
         const std::string &name,
         VkImageType imageType,
         VkFormat format,
@@ -157,13 +176,13 @@ public:
         uint32_t dsCap = 100);
 
     std::tuple<VkPipeline, VkPipelineLayout> createGraphicsPipeline(
-        std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, 
-        const char*,
-        // std::string, /** dangling pointer issues */
-        const VkSpecializationInfo *>> vsShaderEntities,
-        const std::vector<VkDescriptorSetLayout>& dsLayouts,
-        const VkRenderPass& renderPass
-    );
+        std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule,
+                                                             const char *,
+                                                             // std::string, /** dangling pointer issues */
+                                                             const VkSpecializationInfo *>>
+            vsShaderEntities,
+        const std::vector<VkDescriptorSetLayout> &dsLayouts,
+        const VkRenderPass &renderPass);
 
     std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> allocateDescriptorSet(
         const VkDescriptorPool pool,
@@ -177,10 +196,12 @@ public:
         VkDescriptorType descriptorSetType,
         uint32_t descriptorSetBindingPoint = 0);
 
+    // uint32_t dstArrayElement = 0 useful for async io case
     void bindTextureToDescriptorSet(
-        const std::vector<VkImageView> &imageViews,
+        const std::vector<ImageEntity> &images,
         VkDescriptorSet descriptorSetToBind,
         VkDescriptorType descriptorSetType,
+        uint32_t dstArrayElement = 0,
         uint32_t descriptorSetBindingPoint = 0);
 
     void bindSamplerToDescriptorSet(
@@ -190,24 +211,23 @@ public:
         uint32_t descriptorSetBindingPoint = 0);
 
     void writeBuffer(
-        const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
-        const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &deviceLocalBuffer,
-        const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
+        const BufferEntity &stagingBuffer,
+        const BufferEntity &deviceLocalBuffer,
+        const CommandBufferEntity &cmdBuffer,
         const void *rawData,
         uint32_t sizeInBytes,
         uint32_t srcOffset = 0,
         uint32_t dstOffset = 0);
 
     void writeImage(
-        const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
-        const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
-        const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
+        const ImageEntity &image,
+        const BufferEntity &stagingBuffer,
+        const CommandBufferEntity &cmdBuffer,
         void *rawData);
 
     void generateMipmaps(
-        const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
-        const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
-        const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer);
+        const ImageEntity &image,
+        const CommandBufferEntity &cmdBuffer);
 
     VkInstance getInstance() const;
     VkDevice getLogicDevice() const;
@@ -228,10 +248,15 @@ public:
     VkSwapchainKHR getSwapChain() const;
     VkExtent2D getSwapChainExtent() const;
 
+    // per-frame rendering op
     const std::vector<VkImageView> &getSwapChainImageViews() const;
-
-    const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &getCommandBufferForIO() const;
-    std::pair<uint32_t, std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> getCommandBufferForRendering() const;
+    // legacy sync io (still needs graphics)
+    const CommandBufferEntity &getCommandBufferForIO() const;
+    // graphics without transfer
+    const CommandBufferEntity &getCommandBufferForMipmapOnly() const;
+    // non-graphics ops
+    const CommandBufferEntity &getCommandBufferForTransferOnly() const;
+    std::pair<uint32_t, CommandBufferEntity> getCommandBufferForRendering() const;
     void advanceCommandBuffer();
 
     void submitCommand();
@@ -239,6 +264,62 @@ public:
     void present(uint32_t swapChainImageIndex);
 
     uint32_t getSwapChainImageIndexToRender() const;
+
+    // memory barrier: explicitly control access to buffer and image subresource ranges.
+    // Image memory barriers can also be used to define image layout transitions or a queue family ownership transfer
+    // queue family ownership transfer operation:
+
+    // A queue family ownership transfer consists of two distinct parts:
+    // Release exclusive ownership from the source queue family: thread 1
+    // Acquire exclusive ownership for the destination queue family: thread 2
+    // a pass through 
+    // An application must ensure that these operations occur in the correct order
+    // by defining an execution dependency between them, e.g. using a semaphore.
+
+    // typedef struct VkImageMemoryBarrier {
+    //     VkStructureType            sType;
+    //     const void*                pNext;
+    //     VkAccessFlags              srcAccessMask;
+    //     VkAccessFlags              dstAccessMask;
+    //     VkImageLayout              oldLayout;
+    //     VkImageLayout              newLayout;
+    //     uint32_t                   srcQueueFamilyIndex;
+    //     uint32_t                   dstQueueFamilyIndex;
+    //     VkImage                    image;
+    //     VkImageSubresourceRange    subresourceRange;
+    // } VkImageMemoryBarrier;
+
+    // // Provided by VK_VERSION_1_3
+    // typedef struct VkImageMemoryBarrier2 {
+    //     VkStructureType            sType;
+    //     const void*                pNext;
+    //     VkPipelineStageFlags2      srcStageMask;
+    //     VkAccessFlags2             srcAccessMask;
+    //     VkPipelineStageFlags2      dstStageMask;
+    //     VkAccessFlags2             dstAccessMask;
+    //     VkImageLayout              oldLayout;
+    //     VkImageLayout              newLayout;
+    //     uint32_t                   srcQueueFamilyIndex;
+    //     uint32_t                   dstQueueFamilyIndex;
+    //     VkImage                    image;
+    //     VkImageSubresourceRange    subresourceRange;
+    // } VkImageMemoryBarrier2;
+
+    // step1: release part of queue family ownership transfer
+    void releaseQueueFamilyOwnership(
+        const CommandBufferEntity& cmdBuffer, 
+        const ImageEntity& image, 
+        uint32_t srcQueueFamilyIndex, 
+        uint32_t dstQueueFamilyIndex
+    );
+
+    // step2: acquire part of queue family ownership transfer
+    void acquireQueueFamilyOwnership(
+        const CommandBufferEntity& cmdBuffer, 
+        const ImageEntity& image, 
+        uint32_t srcQueueFamilyIndex, 
+        uint32_t dstQueueFamilyIndex
+    );
 
     // features chains
     // now is to toggle features selectively

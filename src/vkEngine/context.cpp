@@ -4,6 +4,9 @@
 #include <context.h>
 #include <window.h>
 
+#include <queuethreadsafe.h>
+#include <future> //packaged_task<>
+
 #define VK_NO_PROTOTYPES // for volk
 #define VOLK_IMPLEMENTATION
 
@@ -107,36 +110,36 @@ public:
         uint32_t width,
         uint32_t height);
 
-    std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> createGraphicsCommandBuffers(
+    std::vector<CommandBufferEntity> createGraphicsCommandBuffers(
         const std::string &name,
         uint32_t count,
         uint32_t inflightCount,
         VkFenceCreateFlags flags);
 
-    std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> createTransferCommandBuffers(
+    std::vector<CommandBufferEntity> createTransferCommandBuffers(
         const std::string &name,
         uint32_t count,
         uint32_t inflightCount,
         VkFenceCreateFlags flags);
 
-    void BeginRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer);
-    void EndRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer);
+    void BeginRecordCommandBuffer(CommandBufferEntity &cmdBuffer);
+    void EndRecordCommandBuffer(CommandBufferEntity &cmdBuffer);
 
-    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> createPersistentBuffer(
+    BufferEntity createPersistentBuffer(
         const std::string &name,
         VkDeviceSize bufferSizeInBytes,
         VkBufferUsageFlags bufferUsageFlag);
 
-    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> createStagingBuffer(
+    BufferEntity createStagingBuffer(
         const std::string &name,
         VkDeviceSize bufferSizeInBytes);
 
-    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> createDeviceLocalBuffer(
+    BufferEntity createDeviceLocalBuffer(
         const std::string &name,
         VkDeviceSize bufferSizeInBytes,
         VkBufferUsageFlags bufferUsageFlag);
 
-    std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> createImage(
+    ImageEntity createImage(
         const std::string &name,
         VkImageType imageType,
         VkFormat format,
@@ -157,7 +160,7 @@ public:
         uint32_t dsCap);
 
     std::tuple<VkPipeline, VkPipelineLayout> createGraphicsPipeline(
-        const std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, const char*, const VkSpecializationInfo *>> &shaderModuleEntities,
+        const std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, const char *, const VkSpecializationInfo *>> &shaderModuleEntities,
         const std::vector<VkDescriptorSetLayout> &dsLayouts,
         const VkRenderPass &renderPass);
 
@@ -174,9 +177,10 @@ public:
         uint32_t descriptorSetBindingPoint);
 
     void bindTextureToDescriptorSet(
-        const std::vector<VkImageView> &imageViews,
+        const std::vector<ImageEntity> &images,
         VkDescriptorSet descriptorSetToBind,
         VkDescriptorType descriptorSetType,
+        uint32_t dstArrayElement,
         uint32_t descriptorSetBindingPoint);
 
     void bindSamplerToDescriptorSet(
@@ -186,26 +190,25 @@ public:
         uint32_t descriptorSetBindingPoint);
 
     void writeBuffer(
-        const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
-        const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &deviceLocalBuffer,
-        const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
+        const BufferEntity &stagingBuffer,
+        const BufferEntity &deviceLocalBuffer,
+        const CommandBufferEntity &cmdBuffer,
         const void *rawData,
         uint32_t sizeInBytes,
         uint32_t srcOffset = 0,
         uint32_t dstOffset = 0);
 
     void writeImage(
-        const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
-        const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
-        const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
+        const ImageEntity &image,
+        const BufferEntity &stagingBuffer,
+        const CommandBufferEntity &cmdBuffer,
         void *rawData);
 
     void generateMipmaps(
-        const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
-        const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
-        const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer);
+        const ImageEntity &image,
+        const CommandBufferEntity &cmdBuffer);
 
-    std::pair<uint32_t, std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> getCommandBufferForRendering();
+    std::pair<uint32_t, CommandBufferEntity> getCommandBufferForRendering();
 
     void submitCommand();
 
@@ -285,8 +288,7 @@ public:
     }
 
     // cmdpool and cmdbuffers
-    using CommandEntity = std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>>;
-    std::unordered_map<COMMAND_SEMANTIC, CommandEntity> cmdBuffers;
+    std::unordered_map<COMMAND_SEMANTIC, std::vector<CommandBufferEntity>> cmdBuffers;
 
     // GPU-CPU SYNC
     std::vector<VkSemaphore> imageCanAcquireSemaphores;
@@ -744,6 +746,8 @@ private:
                 (queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT))
             {
                 _transferQueueFamilyIndex = i;
+                // queueFamily.queueCount
+                _transferQueueIndex = 0;
                 continue;
             }
         }
@@ -757,7 +761,8 @@ private:
 
     void createVMA();
 
-    std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> createCommandBuffers(
+    // uint32_t: queueFamilyIndex is needed for caller to do memory barrier
+    std::vector<CommandBufferEntity> createCommandBuffers(
         const std::string &name,
         uint32_t count,
         uint32_t inflightCount,
@@ -765,7 +770,7 @@ private:
         uint32_t queueFamilyIndex,
         VkQueue queue);
 
-    std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> createBuffer(
+    BufferEntity createBuffer(
         const std::string &name,
         VkDeviceSize bufferSizeInBytes,
         VkBufferUsageFlags bufferUsageFlag,
@@ -773,7 +778,8 @@ private:
         VmaAllocationCreateFlags memoryAllocationFlag,
         VkMemoryPropertyFlags requiredMemoryProperties,
         VkMemoryPropertyFlags preferredMemoryProperties,
-        VmaMemoryUsage memoryUsage);
+        VmaMemoryUsage memoryUsage,
+        bool mapping = false);
 
     bool checkValidationLayerSupport() const
     {
@@ -858,6 +864,7 @@ private:
     // I choose 0 as graphics, 1 as compute
     uint32_t _graphicsQueueIndex{std::numeric_limits<uint32_t>::max()};
     uint32_t _computeQueueIndex{std::numeric_limits<uint32_t>::max()};
+    uint32_t _transferQueueIndex{std::numeric_limits<uint32_t>::max()};
 
     VkStructChain<> _featureChain;
 
@@ -1110,7 +1117,7 @@ void VkContext::Impl::cacheCommandQueue()
     // Get transfer queue if present
     if (_transferQueueFamilyIndex != std::numeric_limits<uint32_t>::max())
     {
-        vkGetDeviceQueue(_logicalDevice, _transferQueueFamilyIndex, 0, &_transferQueue);
+        vkGetDeviceQueue(_logicalDevice, _transferQueueFamilyIndex, _transferQueueIndex, &_transferQueue);
     }
 
     // familyIndexSupportSurface
@@ -1446,7 +1453,7 @@ VkFramebuffer VkContext::Impl::createFramebuffer(
     return fbo;
 }
 
-std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl::createGraphicsCommandBuffers(
+std::vector<CommandBufferEntity> VkContext::Impl::createGraphicsCommandBuffers(
     const std::string &name,
     uint32_t count,
     uint32_t inflightCount,
@@ -1457,7 +1464,7 @@ std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl
                                       _graphicsQueue);
 }
 
-std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl::createTransferCommandBuffers(
+std::vector<CommandBufferEntity> VkContext::Impl::createTransferCommandBuffers(
     const std::string &name,
     uint32_t count,
     uint32_t inflightCount,
@@ -1468,7 +1475,7 @@ std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl
                                       _transferQueue);
 }
 
-std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl::createCommandBuffers(
+std::vector<CommandBufferEntity> VkContext::Impl::createCommandBuffers(
     const std::string &name,
     uint32_t count,
     uint32_t inflightCount,
@@ -1479,7 +1486,7 @@ std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl
     ASSERT(inflightCount == 0 || count == inflightCount,
            "inflightCount must either be 0 or equal commandbuffer count");
 
-    std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> res;
+    std::vector<CommandBufferEntity> res;
 
     std::vector<VkCommandBuffer> commandBuffers;
     std::vector<VkFence> inFlightFences;
@@ -1515,12 +1522,12 @@ std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl
     res.reserve(count);
     for (size_t i = 0; i < count; ++i)
     {
-        res.emplace_back(make_tuple(commandPool, commandBuffers[i], inFlightFences[i]));
+        res.emplace_back(make_tuple(commandPool, commandBuffers[i], inFlightFences[i], queueFamilyIndex, queue));
     }
     return res;
 }
 
-void VkContext::Impl::BeginRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBufferEntity)
+void VkContext::Impl::BeginRecordCommandBuffer(CommandBufferEntity &cmdBufferEntity)
 {
     const auto cmdBufferHandle = std::get<1>(cmdBufferEntity);
     const auto fenceHandle = std::get<2>(cmdBufferEntity);
@@ -1538,13 +1545,13 @@ void VkContext::Impl::BeginRecordCommandBuffer(std::tuple<VkCommandPool, VkComma
     VK_CHECK(vkBeginCommandBuffer(cmdBufferHandle, &cmdBufferBeginInfo));
 }
 
-void VkContext::Impl::EndRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBufferEntity)
+void VkContext::Impl::EndRecordCommandBuffer(CommandBufferEntity &cmdBufferEntity)
 {
     const auto cmdBufferHandle = std::get<1>(cmdBufferEntity);
     VK_CHECK(vkEndCommandBuffer(cmdBufferHandle));
 }
 
-std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::Impl::createBuffer(
+BufferEntity VkContext::Impl::createBuffer(
     const std::string &name,
     VkDeviceSize bufferSizeInBytes,
     VkBufferUsageFlags bufferUsageFlag,
@@ -1552,7 +1559,8 @@ std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::Impl::createBu
     VmaAllocationCreateFlags memoryAllocationFlag,
     VkMemoryPropertyFlags requiredMemoryProperties,
     VkMemoryPropertyFlags preferredMemoryProperties,
-    VmaMemoryUsage memoryUsage)
+    VmaMemoryUsage memoryUsage,
+    bool mapping)
 {
     VkBuffer buffer{VK_NULL_HANDLE};
     VmaAllocation allocation{VK_NULL_HANDLE};
@@ -1576,14 +1584,22 @@ std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::Impl::createBu
                              &buffer,
                              &allocation, nullptr));
     vmaGetAllocationInfo(_vmaAllocator, allocation, &allocationInfo);
-    return make_tuple(buffer, allocation, allocationInfo);
+    if (!mapping)
+        return make_tuple(buffer, allocation, allocationInfo, nullptr);
+    else
+    {
+        MappingAddressType address;
+        VK_CHECK(vmaMapMemory(_vmaAllocator, allocation, &address));
+        return make_tuple(buffer, allocation, allocationInfo, address);
+    }
 }
 
-std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::Impl::createPersistentBuffer(
+BufferEntity VkContext::Impl::createPersistentBuffer(
     const std::string &name,
     VkDeviceSize bufferSizeInBytes,
     VkBufferUsageFlags bufferUsageFlag)
 {
+    log(Level::Info, "createPersistentBuffer:", std::this_thread::get_id());
     return createBuffer(
         name,
         bufferSizeInBytes,
@@ -1596,12 +1612,11 @@ std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::Impl::createPe
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
             VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-        VMA_MEMORY_USAGE_CPU_TO_GPU);
+        VMA_MEMORY_USAGE_CPU_TO_GPU,
+        false);
 }
 
-std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::Impl::createStagingBuffer(
-    const std::string &name,
-    VkDeviceSize bufferSizeInBytes)
+BufferEntity VkContext::Impl::createStagingBuffer(const std::string &name, VkDeviceSize bufferSizeInBytes)
 {
     return createBuffer(
         name,
@@ -1617,7 +1632,7 @@ std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::Impl::createSt
         VMA_MEMORY_USAGE_CPU_ONLY);
 }
 
-std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::Impl::createDeviceLocalBuffer(
+BufferEntity VkContext::Impl::createDeviceLocalBuffer(
     const std::string &name,
     VkDeviceSize bufferSizeInBytes,
     VkBufferUsageFlags bufferUsageFlag)
@@ -1633,7 +1648,7 @@ std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::Impl::createDe
         VMA_MEMORY_USAGE_GPU_ONLY);
 }
 
-std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> VkContext::Impl::createImage(
+ImageEntity VkContext::Impl::createImage(
     const std::string &name,
     VkImageType imageType,
     VkFormat format,
@@ -1677,6 +1692,8 @@ std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkE
     VkImageView imageView;
     VK_CHECK(vmaCreateImage(_vmaAllocator, &imageCreateInfo, &allocCreateInfo, &image,
                             &imageAllocation, nullptr));
+    // multi-threading debugging
+    log(Level::Info, "vmaGetAllocationInfo:", std::this_thread::get_id());
     vmaGetAllocationInfo(_vmaAllocator, imageAllocation, &imageAllocationInfo);
     // image view
     VkImageViewCreateInfo imageViewInfo = {};
@@ -1799,7 +1816,7 @@ VkDescriptorPool VkContext::Impl::createDescriptorSetPool(
 
 std::tuple<VkPipeline, VkPipelineLayout> VkContext::Impl::createGraphicsPipeline(
     const std::unordered_map<VkShaderStageFlagBits,
-                             std::tuple<VkShaderModule, const char*, const VkSpecializationInfo *>> &shaderModuleEntities,
+                             std::tuple<VkShaderModule, const char *, const VkSpecializationInfo *>> &shaderModuleEntities,
     const std::vector<VkDescriptorSetLayout> &dsLayouts,
     const VkRenderPass &renderPass)
 {
@@ -2030,18 +2047,19 @@ void VkContext::Impl::bindBufferToDescriptorSet(
 }
 
 void VkContext::Impl::bindTextureToDescriptorSet(
-    const std::vector<VkImageView> &imageViews,
+    const std::vector<ImageEntity> &images,
     VkDescriptorSet descriptorSetToBind,
     VkDescriptorType descriptorSetType,
+    uint32_t dstArrayElement,
     uint32_t descriptorSetBindingPoint)
 {
     std::vector<VkDescriptorImageInfo> descImageInfos;
-    descImageInfos.reserve(imageViews.size());
-    for (const auto &imageView : imageViews)
+    descImageInfos.reserve(images.size());
+    for (const auto &image : images)
     {
         descImageInfos.emplace_back(VkDescriptorImageInfo{
             .sampler = VK_NULL_HANDLE,
-            .imageView = imageView,
+            .imageView = std::get<IMAGE_ENTITY_OFFSET::IMAGE_VIEW>(image),
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         });
     }
@@ -2051,7 +2069,7 @@ void VkContext::Impl::bindTextureToDescriptorSet(
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         .dstSet = descriptorSetToBind,
         .dstBinding = descriptorSetBindingPoint,
-        .dstArrayElement = 0,
+        .dstArrayElement = dstArrayElement,
         .descriptorCount = static_cast<uint32_t>(descImageInfos.size()),
         .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
         .pImageInfo = descImageInfos.data(),
@@ -2094,9 +2112,9 @@ void VkContext::Impl::bindSamplerToDescriptorSet(
 }
 
 void VkContext::Impl::writeBuffer(
-    const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
-    const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &deviceLocalBuffer,
-    const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
+    const BufferEntity &stagingBuffer,
+    const BufferEntity &deviceLocalBuffer,
+    const CommandBufferEntity &cmdBuffer,
     const void *rawData,
     uint32_t sizeInBytes,
     uint32_t srcOffset,
@@ -2104,11 +2122,14 @@ void VkContext::Impl::writeBuffer(
 {
     const auto stagingBufferHandle = std::get<0>(stagingBuffer);
     const auto deviceLocalBufferHandle = std::get<0>(deviceLocalBuffer);
+    // https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/general_considerations.html
+    // vmaStagingImageBufferAllocation is not thread-safe
     const auto vmaStagingImageBufferAllocation = std::get<1>(stagingBuffer);
     const auto cmdBufferHandle = std::get<1>(cmdBuffer);
 
     // copy vb from host to device, region
     void *mappedMemory{nullptr};
+    // log(Level::Info, "vmaMapMemory:", std::this_thread::get_id());
     VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingImageBufferAllocation, &mappedMemory));
     memcpy(mappedMemory, rawData, sizeInBytes);
     vmaUnmapMemory(_vmaAllocator, vmaStagingImageBufferAllocation);
@@ -2120,9 +2141,9 @@ void VkContext::Impl::writeBuffer(
 }
 
 void VkContext::Impl::writeImage(
-    const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
-    const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
-    const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
+    const ImageEntity &image,
+    const BufferEntity &stagingBuffer,
+    const CommandBufferEntity &cmdBuffer,
     void *rawData)
 {
     const auto imageHandle = std::get<0>(image);
@@ -2135,10 +2156,10 @@ void VkContext::Impl::writeImage(
     void *imageDataPtr{nullptr};
     // format: VK_FORMAT_R8G8B8A8_UNORM took 4 bytes
     const auto imageDataSizeInBytes = get3DImageSizeInBytes(extent, VK_FORMAT_R8G8B8A8_UNORM);
+    // log(Level::Info, "vmaMapMemory:", std::this_thread::get_id());
     VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingImageBufferAllocation, &imageDataPtr));
     memcpy(imageDataPtr, rawData, imageDataSizeInBytes);
     vmaUnmapMemory(_vmaAllocator, vmaStagingImageBufferAllocation);
-
     // image layout from undefined to write dst
     // transition layout
     // barrier based on mip level, array layers
@@ -2159,6 +2180,7 @@ void VkContext::Impl::writeImage(
     imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     // VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: written into
     imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+
     vkCmdPipelineBarrier(
         cmdBufferHandle,
         VK_PIPELINE_STAGE_HOST_BIT,
@@ -2195,9 +2217,8 @@ void VkContext::Impl::writeImage(
 }
 
 void VkContext::Impl::generateMipmaps(
-    const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
-    const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
-    const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer)
+    const ImageEntity &image,
+    const CommandBufferEntity &cmdBuffer)
 {
     const auto imageHandle = std::get<0>(image);
     const auto textureMipLevelCount = std::get<4>(image);
@@ -2308,7 +2329,7 @@ void VkContext::Impl::generateMipmaps(
                          1, &convertToShaderReadBarrier);
 }
 
-std::pair<uint32_t, std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::Impl::getCommandBufferForRendering()
+std::pair<uint32_t, CommandBufferEntity> VkContext::Impl::getCommandBufferForRendering()
 {
     const auto &cmdBuffersForRendering = cmdBuffers[COMMAND_SEMANTIC::RENDERING];
 
@@ -2471,9 +2492,14 @@ void VkContext::initDefaultCommandBuffers()
     // VK_FENCE_CREATE_SIGNALED_BIT to unify waitFence behavior in beginRecordCommandBuffer
     _pimpl->cmdBuffers.insert(std::make_pair(COMMAND_SEMANTIC::IO,
                                              _pimpl->createGraphicsCommandBuffers("io", 1, 1, VK_FENCE_CREATE_SIGNALED_BIT)));
+
+    _pimpl->cmdBuffers.insert(std::make_pair(COMMAND_SEMANTIC::MIPMAP,
+                                             _pimpl->createGraphicsCommandBuffers("mipmap", 1, 1, VK_FENCE_CREATE_SIGNALED_BIT)));
+    _pimpl->cmdBuffers.insert(std::make_pair(COMMAND_SEMANTIC::TRANSFER,
+                                             _pimpl->createTransferCommandBuffers("transfer", 1, 1, VK_FENCE_CREATE_SIGNALED_BIT)));
 }
 
-std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::createGraphicsCommandBuffers(
+std::vector<CommandBufferEntity> VkContext::createGraphicsCommandBuffers(
     const std::string &name,
     uint32_t count,
     uint32_t inflightCount,
@@ -2482,7 +2508,7 @@ std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::crea
     return _pimpl->createGraphicsCommandBuffers(name, count, inflightCount, flags);
 }
 
-std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::createTransferCommandBuffers(
+std::vector<CommandBufferEntity> VkContext::createTransferCommandBuffers(
     const std::string &name,
     uint32_t count,
     uint32_t inflightCount,
@@ -2491,7 +2517,7 @@ std::vector<std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::crea
     return _pimpl->createTransferCommandBuffers(name, count, inflightCount, flags);
 }
 
-std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::createPersistentBuffer(
+BufferEntity VkContext::createPersistentBuffer(
     const std::string &name,
     VkDeviceSize bufferSizeInBytes,
     VkBufferUsageFlags bufferUsageFlag)
@@ -2499,14 +2525,14 @@ std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::createPersiste
     return _pimpl->createPersistentBuffer(name, bufferSizeInBytes, bufferUsageFlag);
 }
 
-std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::createStagingBuffer(
+BufferEntity VkContext::createStagingBuffer(
     const std::string &name,
     VkDeviceSize bufferSizeInBytes)
 {
     return _pimpl->createStagingBuffer(name, bufferSizeInBytes);
 }
 
-std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::createDeviceLocalBuffer(
+BufferEntity VkContext::createDeviceLocalBuffer(
     const std::string &name,
     VkDeviceSize bufferSizeInBytes,
     VkBufferUsageFlags bufferUsageFlag)
@@ -2514,7 +2540,7 @@ std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> VkContext::createDeviceLo
     return _pimpl->createDeviceLocalBuffer(name, bufferSizeInBytes, bufferUsageFlag);
 }
 
-std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> VkContext::createImage(
+ImageEntity VkContext::createImage(
     const std::string &name,
     VkImageType imageType,
     VkFormat format,
@@ -2549,11 +2575,11 @@ VkDescriptorPool VkContext::createDescriptorSetPool(
 }
 
 std::tuple<VkPipeline, VkPipelineLayout> VkContext::createGraphicsPipeline(
-    std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, const char*, const VkSpecializationInfo *>> vsShaderEntities,
+    std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, const char *, const VkSpecializationInfo *>> vsShaderEntities,
     const std::vector<VkDescriptorSetLayout> &dsLayouts,
     const VkRenderPass &renderPass)
 {
-     return _pimpl->createGraphicsPipeline(vsShaderEntities, dsLayouts, renderPass);
+    return _pimpl->createGraphicsPipeline(vsShaderEntities, dsLayouts, renderPass);
 }
 
 std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> VkContext::allocateDescriptorSet(
@@ -2576,12 +2602,16 @@ void VkContext::bindBufferToDescriptorSet(
 }
 
 void VkContext::bindTextureToDescriptorSet(
-    const std::vector<VkImageView> &imageViews,
+    const std::vector<ImageEntity> &images,
     VkDescriptorSet descriptorSetToBind,
     VkDescriptorType descriptorSetType,
+    uint32_t dstArrayElement,
     uint32_t descriptorSetBindingPoint)
 {
-    return _pimpl->bindTextureToDescriptorSet(imageViews, descriptorSetToBind, descriptorSetType, descriptorSetBindingPoint);
+    return _pimpl->bindTextureToDescriptorSet(images, descriptorSetToBind,
+                                              descriptorSetType,
+                                              dstArrayElement,
+                                              descriptorSetBindingPoint);
 }
 
 void VkContext::bindSamplerToDescriptorSet(
@@ -2594,9 +2624,9 @@ void VkContext::bindSamplerToDescriptorSet(
 }
 
 void VkContext::writeBuffer(
-    const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
-    const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &deviceLocalBuffer,
-    const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
+    const BufferEntity &stagingBuffer,
+    const BufferEntity &deviceLocalBuffer,
+    const CommandBufferEntity &cmdBuffer,
     const void *rawData,
     uint32_t sizeInBytes,
     uint32_t srcOffset,
@@ -2606,29 +2636,28 @@ void VkContext::writeBuffer(
 }
 
 void VkContext::writeImage(
-    const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
-    const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
-    const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
+    const ImageEntity &image,
+    const BufferEntity &stagingBuffer,
+    const CommandBufferEntity &cmdBuffer,
     void *rawData)
 {
     return _pimpl->writeImage(image, stagingBuffer, cmdBuffer, rawData);
 }
 
-void VkContext::BeginRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer)
+void VkContext::BeginRecordCommandBuffer(CommandBufferEntity &cmdBuffer)
 {
     return _pimpl->BeginRecordCommandBuffer(cmdBuffer);
 }
-void VkContext::EndRecordCommandBuffer(std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer)
+void VkContext::EndRecordCommandBuffer(CommandBufferEntity &cmdBuffer)
 {
     return _pimpl->EndRecordCommandBuffer(cmdBuffer);
 }
 
 void VkContext::generateMipmaps(
-    const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
-    const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
-    const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer)
+    const ImageEntity &image,
+    const CommandBufferEntity &cmdBuffer)
 {
-    return _pimpl->generateMipmaps(image, stagingBuffer, cmdBuffer);
+    return _pimpl->generateMipmaps(image, cmdBuffer);
 }
 
 VkInstance VkContext::getInstance() const
@@ -2701,12 +2730,22 @@ const std::vector<VkImageView> &VkContext::getSwapChainImageViews() const
     return _pimpl->getSwapChainImageViews();
 }
 
-const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &VkContext::getCommandBufferForIO() const
+const CommandBufferEntity &VkContext::getCommandBufferForIO() const
 {
     return _pimpl->cmdBuffers[COMMAND_SEMANTIC::IO][0];
 }
 
-std::pair<uint32_t, std::tuple<VkCommandPool, VkCommandBuffer, VkFence>> VkContext::getCommandBufferForRendering() const
+const CommandBufferEntity &VkContext::getCommandBufferForMipmapOnly() const
+{
+    return _pimpl->cmdBuffers[COMMAND_SEMANTIC::MIPMAP][0];
+}
+
+const CommandBufferEntity &VkContext::getCommandBufferForTransferOnly() const
+{
+    return _pimpl->cmdBuffers[COMMAND_SEMANTIC::TRANSFER][0];
+}
+
+std::pair<uint32_t, CommandBufferEntity> VkContext::getCommandBufferForRendering() const
 {
     return _pimpl->getCommandBufferForRendering();
 }
@@ -2730,4 +2769,71 @@ void VkContext::present(uint32_t swapChainImageIndex)
 uint32_t VkContext::getSwapChainImageIndexToRender() const
 {
     return _pimpl->getSwapChainImageIndexToRender();
+}
+
+void VkContext::releaseQueueFamilyOwnership(
+    const CommandBufferEntity &cmdBuffer,
+    const ImageEntity &image,
+    uint32_t srcQueueFamilyIndex,
+    uint32_t dstQueueFamilyIndex)
+{
+    // diff: VkImageMemoryBarrier2 vs VkImageMemoryBarrier is the srcStageMask and dstStageMast
+    // vkCmdPipelineBarrier2 is easier to use than vkCmdPipelineBarrier
+    const auto mipLevels = std::get<4>(image);
+    VkImageMemoryBarrier2 releaseBarrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .srcQueueFamilyIndex = srcQueueFamilyIndex,
+        .dstQueueFamilyIndex = dstQueueFamilyIndex,
+        .image = std::get<0>(image),
+        .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, mipLevels, 0, 1},
+    };
+
+    VkDependencyInfo dependencyInfo{
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .imageMemoryBarrierCount = 1,
+        .pImageMemoryBarriers = &releaseBarrier,
+    };
+
+    const auto cmdBufferHandle = std::get<1>(cmdBuffer);
+    vkCmdPipelineBarrier2(cmdBufferHandle, &dependencyInfo);
+}
+
+// executing a buffer memory barrier (for a buffer range)
+// or an image memory barrier (for an image subresource range) using a pipeline barrier command
+// on a queue from the destination queue family
+// srcAccessMask is ignored for such a barrier
+// srcStageMask is also ignored for such a barrier
+// Typically, a release and acquire pair is performed by a VkSemaphore signal and
+// wait in their respective queues.
+// Signaling a semaphore with vkQueueSubmit waits for VK_PIPELINE_STAGE_ALL_COMMANDS_BIT.
+// With vkQueueSubmit2, stageMask for the signal semaphore must be VK_PIPELINE_STAGE_ALL_COMMANDS_BIT.
+// Similarly, for the acquire operation, waiting for a semaphore must use VK_PIPELINE_STAGE_ALL_COMMANDS_BIT to make sure the acquire operation is synchronized.
+void VkContext::acquireQueueFamilyOwnership(
+    const CommandBufferEntity &cmdBuffer,
+    const ImageEntity &image,
+    uint32_t srcQueueFamilyIndex,
+    uint32_t dstQueueFamilyIndex)
+{
+    const auto mipLevels = std::get<4>(image);
+    VkImageMemoryBarrier2 acquireBarrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT,
+        .srcQueueFamilyIndex = srcQueueFamilyIndex,
+        .dstQueueFamilyIndex = dstQueueFamilyIndex,
+        .image = std::get<0>(image),
+        .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, mipLevels, 0, 1},
+    };
+
+    VkDependencyInfo dependencyInfo{
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .imageMemoryBarrierCount = 1,
+        .pImageMemoryBarriers = &acquireBarrier,
+    };
+    const auto cmdBufferHandle = std::get<1>(cmdBuffer);
+    vkCmdPipelineBarrier2(cmdBufferHandle, &dependencyInfo);
 }

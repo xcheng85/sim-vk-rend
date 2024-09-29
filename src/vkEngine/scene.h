@@ -7,7 +7,7 @@
 #include <matrix.h>
 #include <misc.h>
 // mimic
-//struct VkDrawIndexedIndirectCommand {
+// struct VkDrawIndexedIndirectCommand {
 //    uint32_t    indexCount;
 //    uint32_t    instanceCount;
 //    uint32_t    firstIndex;
@@ -15,7 +15,8 @@
 //    uint32_t    firstInstance;
 //};
 
-struct IndirectDrawDef1 {
+struct IndirectDrawDef1
+{
     uint32_t indexCount;
     uint32_t instanceCount;
     uint32_t firstIndex;
@@ -26,7 +27,7 @@ struct IndirectDrawDef1 {
 };
 
 //
-//struct Vertex {
+// struct Vertex {
 //    vec3f pos;
 //    vec2f texCoord;
 //    uint32_t material;
@@ -47,7 +48,8 @@ struct IndirectDrawDef1 {
 //    }
 //};
 
-struct Vertex {
+struct Vertex
+{
     float vx;
     float vy;
     float vz;
@@ -55,13 +57,13 @@ struct Vertex {
     float uy;
     uint32_t material;
 
-    void transform(const mat4x4f &m) {
+    void transform(const mat4x4f &m)
+    {
         auto newp = MatrixMultiplyVector4x4(m, vec4f(std::array<float, 4>{
-                vx,
-                vy,
-                vz,
-                1.0
-        }));
+                                                   vx,
+                                                   vy,
+                                                   vz,
+                                                   1.0}));
 
         vx = newp[COMPONENT::X];
         vy = newp[COMPONENT::Y];
@@ -69,7 +71,8 @@ struct Vertex {
     }
 };
 
-struct Mesh {
+struct Mesh
+{
     std::vector<Vertex> vertices{};
     std::vector<uint32_t> indices{};
     int32_t materialIdx{-1};
@@ -85,7 +88,8 @@ struct Mesh {
 // https://github.com/KhronosGroup/glTF/blob/2.0/specification/2.0/schema/material.schema.json
 // struct Material : glTFChildOfRootProperty
 // struct PBRMetallicRoughness : glTFProperty
-struct Material {
+struct Material
+{
     // refer to PBRMetallicRoughness
     int basecolorTextureId{-1};
     int basecolorSamplerId{-1};
@@ -93,21 +97,22 @@ struct Material {
     vec4f basecolor;
 };
 
-struct Texture {
+struct Texture
+{
     Texture(const std::vector<uint8_t> &rawBuffer);
 
-//    {
-//        LOGI("rawBuffer Size: %d", rawBuffer.size());
-//        ktxResult result = ktxTexture_CreateFromMemory(rawBuffer.data(), rawBuffer.size(),
-//                                                       KTX_TEXTURE_CREATE_NO_FLAGS,
-//                                             &ktxTexture);
-//        ASSERT(result == KTX_SUCCESS, "ktxTexture_CreateFromMemory failed");
-//    }
+    //    {
+    //        LOGI("rawBuffer Size: %d", rawBuffer.size());
+    //        ktxResult result = ktxTexture_CreateFromMemory(rawBuffer.data(), rawBuffer.size(),
+    //                                                       KTX_TEXTURE_CREATE_NO_FLAGS,
+    //                                             &ktxTexture);
+    //        ASSERT(result == KTX_SUCCESS, "ktxTexture_CreateFromMemory failed");
+    //    }
     ~Texture();
-//    {
-//        ktxTexture_Destroy(ktxTexture);
-//    }
-    //ktxTexture *ktxTexture{nullptr};
+    //    {
+    //        ktxTexture_Destroy(ktxTexture);
+    //    }
+    // ktxTexture *ktxTexture{nullptr};
 
     void *data{nullptr};
     int width{0};
@@ -115,7 +120,10 @@ struct Texture {
     int channels{0};
 };
 
-struct Scene {
+struct Scene
+{
+    ~Scene();
+
     std::vector<Mesh> meshes;
     std::vector<Material> materials;
     std::vector<std::unique_ptr<Texture>> textures;

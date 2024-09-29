@@ -8,6 +8,9 @@
 
 #include <stb_image_write.h>
 
+#include <misc.h>
+#include <thread>
+
 Texture::Texture(const std::vector<uint8_t> &rawBuffer) {
     //LOGI("rawBuffer Size: %d", rawBuffer.size());
     data = stbi_load_from_memory(rawBuffer.data(), rawBuffer.size(), &width, &height,
@@ -15,5 +18,10 @@ Texture::Texture(const std::vector<uint8_t> &rawBuffer) {
 }
 
 Texture::~Texture() {
+    log(Level::Info, "Texture::~Texture:", std::this_thread::get_id());
     stbi_image_free(data);
+}
+
+Scene::~Scene(){
+     log(Level::Info, "Scene::~Scene:", std::this_thread::get_id());
 }

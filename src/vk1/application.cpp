@@ -26,10 +26,20 @@ void VkApplication::init()
             std::packaged_task<uploadTextureFn> task;
             _asyncTaskQueue.bpop(task);
             task();
-            std::this_thread::sleep_for(2s);
         }
     };
     _handleUploadTextureTaskFuture = std::async(std::launch::async, handleUploadTextureTask);
+
+    const auto handleTextureGenMipmapTask = [this]()
+    {
+        while (true)
+        {
+            std::packaged_task<void(void)> task;
+            _asyncTaskQueueForGenMipmaps.bpop(task);
+            task();
+        }
+    };
+    _handleTextureGenMipmapTaskFuture = std::async(std::launch::async, handleTextureGenMipmapTask);
 
     _ctx.createSwapChain();
     _swapChainRenderPass = _ctx.createSwapChainRenderPass();
@@ -40,17 +50,23 @@ void VkApplication::init()
 
     // vao, textures and glb all depends on host-device io
     // one-time commandBuffer _uploadCmd
+    //
+    preloadGLB();
+
     preHostDeviceIO();
     loadGLB();
+    postHostDeviceIO();
+
     createDescriptorSetLayout();
     createDescriptorPool();
     allocateDescriptorSets();
+
+    loadGLBTextureAsync();
+
     createGraphicsPipeline();
     createSwapChainFramebuffers();
     // createPerFrameSyncObjects();
-    postHostDeviceIO();
     bindResourceToDescriptorSets();
-
     // _initialized = true;
 }
 
@@ -114,7 +130,12 @@ void VkApplication::teardown()
     vkDestroyPipeline(logicalDevice, std::get<0>(_graphicsPipelineEntity), nullptr);
     vkDestroyPipelineLayout(logicalDevice, std::get<1>(_graphicsPipelineEntity), nullptr);
     vkDestroyRenderPass(logicalDevice, _swapChainRenderPass, nullptr);
-    //  _initialized = false;
+
+    // for async resource transfer and acquire between two queue families
+    for (auto &semaphore : _asyncTransferSemaphorePool)
+    {
+        vkDestroySemaphore(logicalDevice, semaphore, nullptr);
+    }
 }
 
 void VkApplication::renderPerFrame()
@@ -166,6 +187,7 @@ void VkApplication::deleteSwapChain()
 
 // depends on shader, and used by graphicsPipelineDesc
 // each set have one instance of layout
+// has dependencies to how many textures in the scene
 void VkApplication::createDescriptorSetLayout()
 {
     std::vector<std::vector<VkDescriptorSetLayoutBinding>> setBindings(DESC_LAYOUT_SEMANTIC_SIZE);
@@ -191,7 +213,7 @@ void VkApplication::createDescriptorSetLayout()
     setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP].resize(2);
     setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][0].binding = 0; // depends on the shader: set 0, binding = 0
     setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][0].descriptorCount = _glbImageEntities.size();
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][0].descriptorCount = _numTextures;
     setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
     setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][1].binding = 1; // depends on the shader: set 0, binding = 0
@@ -261,10 +283,10 @@ void VkApplication::updateUniformBuffer(int currentFrameId)
 {
     ASSERT(currentFrameId >= 0 && currentFrameId < _uniformBuffers.size(), "currentFrameId must be within the range");
     auto logicalDevice = _ctx.getLogicDevice();
-    auto vmaAllocator = _ctx.getVmaAllocator();
     auto swapChainExtent = _ctx.getSwapChainExtent();
-
+    auto vmaAllocator = _ctx.getVmaAllocator();
     auto vmaAllocation = std::get<1>(_uniformBuffers[currentFrameId]);
+    auto mappedMemory = std::get<3>(_uniformBuffers[currentFrameId]);
 
     auto view = _camera.viewTransformLH();
     // auto persPrj = PerspectiveProjectionTransformLH(0.0001f, 200.0f, 0.3f,
@@ -289,11 +311,19 @@ void VkApplication::updateUniformBuffer(int currentFrameId)
     ubo.viewPos = _camera.viewPos();
     ubo.mvp = proj * view;
 
-    void *mappedMemory{nullptr};
-    VK_CHECK(vmaMapMemory(vmaAllocator, vmaAllocation, &mappedMemory));
-    memcpy(mappedMemory, &ubo, sizeof(UniformDataDef1));
-    // memcpy(mappedMemory, &ubo, sizeof(ubo));
-    vmaUnmapMemory(vmaAllocator, vmaAllocation);
+    if (mappedMemory)
+    {
+        memcpy(mappedMemory, &ubo, sizeof(UniformDataDef1));
+    }
+    else
+    {
+        // racing condition due to vmaAllocator
+        void *mappedMemory{nullptr};
+        VK_CHECK(vmaMapMemory(vmaAllocator, vmaAllocation, &mappedMemory));
+        memcpy(mappedMemory, &ubo, sizeof(UniformDataDef1));
+        // memcpy(mappedMemory, &ubo, sizeof(ubo));
+        vmaUnmapMemory(vmaAllocator, vmaAllocation);
+    }
 }
 
 void VkApplication::bindResourceToDescriptorSets()
@@ -351,19 +381,31 @@ void VkApplication::bindResourceToDescriptorSets()
         const auto dstSets = _descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::TEX_SAMP]];
         ASSERT(dstSets.size() == 1, "TEX_SAMP descriptor set size is 1");
 
-        std::vector<VkImageView> imageViews;
-        std::transform(_glbImageEntities.begin(), _glbImageEntities.end(),
-                       std::back_inserter(imageViews),
-                       [](const auto &imageEntity)
-                       {
-                           return std::get<1>(imageEntity);
-                       });
+        // does not work for async io
+        // std::vector<VkImageView> imageViews;
+        // std::transform(_glbImageEntities.begin(), _glbImageEntities.end(),
+        //                std::back_inserter(imageViews),
+        //                [](const auto &imageEntity)
+        //                {
+        //                    return std::get<1>(imageEntity);
+        //                });
 
-        _ctx.bindTextureToDescriptorSet(
-            imageViews,
-            dstSets[0],
-            VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-            0);
+        // _ctx.bindTextureToDescriptorSet(
+        //     imageViews,
+        //     dstSets[0],
+        //     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+        //     0);
+
+        // // mimic asyn-io callback case
+        // uint32_t offset = 0;
+        // for (const auto &imageEntity : _glbImageEntities)
+        // {
+        //     _ctx.bindTextureToDescriptorSet(
+        //         {imageEntity},
+        //         dstSets[0],
+        //         VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+        //         offset++);
+        // }
 
         // for glb samplers
         std::vector<VkSampler> imageSamplers;
@@ -454,7 +496,7 @@ void VkApplication::createGraphicsPipeline()
     const std::string entryPoint{"main"s};
 
     SpecializationDataDef1 specializationData;
-    specializationData.lightingModel = 1;
+    specializationData.lightingModel = 0;
     std::array<VkSpecializationMapEntry, 1> specializationMapEntries;
 
     // layout (constant_id = 0) const int LIGHTING_MODEL = 0;
@@ -587,6 +629,7 @@ void VkApplication::preHostDeviceIO()
 {
     // auto cmdBuffersForIO = _cmdBuffers[COMMAND_SEMANTIC::IO];
     // ASSERT(cmdBuffersForIO.size() == 1, "Only use 1 cmdBuffer for IO")
+
     auto logicalDevice = _ctx.getLogicDevice();
     auto cmdBuffersForIO = _ctx.getCommandBufferForIO();
     _ctx.BeginRecordCommandBuffer(cmdBuffersForIO);
@@ -1161,32 +1204,272 @@ void VkApplication::postHostDeviceIO()
 //     //            VMA_MEMORY_USAGE_GPU_ONLY, "vertex"));
 // }
 
-inline void uploadTextureToGPU(
-    const std::string &name,
-    VkDeviceSize bufferSizeInBytes,
-    const std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat> &image,
-    const std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo> &stagingBuffer,
-    const std::tuple<VkCommandPool, VkCommandBuffer, VkFence> &cmdBuffer,
-    void *rawData)
+inline void genTextureMipmaps(VkContext *ctx,
+                              size_t textureId,
+                              ImageEntity &image,
+                              BufferEntity &stagingBuffer,
+                              CommandBufferEntity &cmdBufferForGraphics,
+                              CommandBufferEntity &cmdBufferForTransferOnly,
+                              VkSemaphore semaphoreFromTransfer,
+                              std::vector<VkSemaphore> &interCommunicationSemaphores,
+                              std::function<void(int, ImageEntity)> textureReadyCallback)
 {
-    log(Level::Info, "uploadTextureToGPU : ", name);
-    std::this_thread::sleep_for(5s);
+    log(Level::Info, "genTextureMipmaps");
+    // semaphore ensures we are safe to release stagingBuffer here
+    auto vmaAllocator = ctx->getVmaAllocator();
+    // vmaDestroyBuffer(
+    //     vmaAllocator,
+    //     std::get<0>(stagingBuffer),
+    //     std::get<1>(stagingBuffer));
+    ctx->BeginRecordCommandBuffer(cmdBufferForGraphics);
+    const auto srcQueueFamilyIndex = std::get<3>(cmdBufferForTransferOnly);
+    const auto graphicsBufferHandle = std::get<1>(cmdBufferForGraphics);
+    const auto graphicsBufferFence = std::get<2>(cmdBufferForGraphics);
+    const auto dstQueueFamilyIndex = std::get<3>(cmdBufferForGraphics);
+    const auto graphicsCmdQueue = std::get<4>(cmdBufferForGraphics);
+
+    // step2: acqure the ownership from transfer queue
+    ctx->acquireQueueFamilyOwnership(
+        cmdBufferForGraphics,
+        image,
+        srcQueueFamilyIndex,
+        dstQueueFamilyIndex);
+    ctx->generateMipmaps(
+        image,
+        cmdBufferForGraphics);
+    ctx->EndRecordCommandBuffer(cmdBufferForGraphics);
+
+    // blit image is done at the stage color_attachment_output(write image)
+    const VkPipelineStageFlags flags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    // uploadTextureToGPU does not need to wait for any previous op
+    // semaphore wait on transfer.
+    VkSubmitInfo submitInfo{};
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = &semaphoreFromTransfer;
+    submitInfo.pWaitDstStageMask = &flags;
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &graphicsBufferHandle;
+    submitInfo.signalSemaphoreCount = 0;
+    submitInfo.pSignalSemaphores = VK_NULL_HANDLE;
+
+    // must resetfence of waiting
+    VK_CHECK(vkResetFences(ctx->getLogicDevice(), 1, &graphicsBufferFence));
+    VK_CHECK(vkQueueSubmit(graphicsCmdQueue, 1, &submitInfo, graphicsBufferFence));
+
+    interCommunicationSemaphores.push_back(semaphoreFromTransfer);
+
+    // callback
+    textureReadyCallback(textureId, image);
 }
 
-void VkApplication::loadGLB()
+inline void uploadTextureToGPU(
+    VkContext *ctx,
+    size_t textureId,
+    const std::string &name,
+    Texture *texture,
+    CommandBufferEntity &cmdBufferForGraphics,
+    CommandBufferEntity &cmdBufferForTransferOnly,
+    QueueThreadSafe<std::packaged_task<void(void)>> *queue,
+    std::vector<VkSemaphore> &interCommunicationSemaphores,
+    std::function<void(int, ImageEntity)> textureReadyCallback,
+    std::vector<BufferEntity> &imageBuffers,
+    std::vector<ImageEntity> &imageEntities)
+{
+    log(Level::Info, "uploadTextureToGPU : ", name);
+    const auto textureMipLevels = getMipLevelsCount(texture->width,
+                                                    texture->height);
+    const uint32_t textureLayoutCount = 1;
+    const VkExtent3D textureExtent = {static_cast<uint32_t>(texture->width),
+                                      static_cast<uint32_t>(texture->height), 1};
+    const bool generateMipmaps = true;
+    const auto imageEntity = ctx->createImage("glb_tex_" + std::to_string(textureId),
+                                              VK_IMAGE_TYPE_2D,
+                                              VK_FORMAT_R8G8B8A8_UNORM,
+                                              textureExtent,
+                                              textureMipLevels,
+                                              textureLayoutCount,
+                                              VK_SAMPLE_COUNT_1_BIT,
+                                              // usage here: both dst and src as mipmap generation
+                                              VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                                              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                                              generateMipmaps);
+    imageEntities.emplace_back(imageEntity);
+
+    // write raw data from cpu to the mipmap level 0 of image
+    const auto stagingBufferSizeForImage = std::get<3>(imageEntity).size;
+
+    // caution: async io race condition from multi-threading
+    // createStagingBuffer must be in the same thread of gpu data uploader
+    auto stagingBuffer = ctx->createStagingBuffer(
+        "Staging Buffer Texture " + std::to_string(textureId),
+        stagingBufferSizeForImage);
+    // data racing hazard
+    imageBuffers.emplace_back(stagingBuffer);
+
+    ctx->BeginRecordCommandBuffer(cmdBufferForTransferOnly);
+    ctx->writeImage(
+        imageEntity,
+        stagingBuffer,
+        cmdBufferForTransferOnly,
+        texture->data);
+    const auto transferCmdBufferHandle = std::get<1>(cmdBufferForTransferOnly);
+    const auto srcQueueFamilyIndex = std::get<3>(cmdBufferForTransferOnly);
+    const auto dstQueueFamilyIndex = std::get<3>(cmdBufferForGraphics);
+    const auto transferCmdBufferFence = std::get<2>(cmdBufferForTransferOnly);
+    const auto transferCmdQueue = std::get<4>(cmdBufferForTransferOnly);
+    ctx->releaseQueueFamilyOwnership(
+        cmdBufferForTransferOnly,
+        imageEntity,
+        srcQueueFamilyIndex,
+        dstQueueFamilyIndex);
+    ctx->EndRecordCommandBuffer(cmdBufferForTransferOnly);
+
+    VkSemaphore semaphore;
+    const VkSemaphoreCreateInfo semaphoreInfo{
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+    };
+    VK_CHECK(vkCreateSemaphore(ctx->getLogicDevice(), &semaphoreInfo, nullptr, &semaphore));
+
+    const VkPipelineStageFlags flags = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    // uploadTextureToGPU does not need to wait for any previous op
+    // semaphore wait on transfer.
+    VkSubmitInfo submitInfo{};
+    submitInfo.waitSemaphoreCount = 0;
+    submitInfo.pWaitSemaphores = VK_NULL_HANDLE;
+    submitInfo.pWaitDstStageMask = &flags; // ignored here since nothing to wait for
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &transferCmdBufferHandle;
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = &semaphore;
+
+    // must resetfence of waiting
+    VK_CHECK(vkResetFences(ctx->getLogicDevice(), 1, &transferCmdBufferFence));
+    VK_CHECK(vkQueueSubmit(transferCmdQueue, 1, &submitInfo, transferCmdBufferFence));
+
+    std::packaged_task<void(void)> task(std::bind(
+        &genTextureMipmaps,
+        ctx,
+        textureId,
+        imageEntity,
+        stagingBuffer,
+        cmdBufferForGraphics,
+        cmdBufferForTransferOnly,
+        semaphore,
+        interCommunicationSemaphores,
+        textureReadyCallback));
+
+    // std::future futureHandle = task.get_future();
+    // // cache the future for retrieve in the future action.
+    // _asyncUploadTextureTaskFutures.emplace_back(std::move(futureHandle));
+
+    queue->push(std::move(task));
+}
+
+void VkApplication::loadGLBTextureAsync()
 {
     const auto vk12FeatureCaps = _ctx.getVk12FeatureCaps();
     auto logicalDevice = _ctx.getLogicDevice();
+
     auto vmaAllocator = _ctx.getVmaAllocator();
     const auto selectedPhysicalDevice = _ctx.getSelectedPhysicalDevice();
     const auto selectedPhysicalDeviceProp = _ctx.getSelectedPhysicalDeviceProp();
 
-    // auto cmdBuffersForIO = _cmdBuffers[COMMAND_SEMANTIC::IO];
-    auto cmdBuffersForIO = _ctx.getCommandBufferForIO();
+    auto cmdBuffersForMipmap = _ctx.getCommandBufferForMipmapOnly();
+    auto cmdBuffersForTransferOnly = _ctx.getCommandBufferForTransferOnly();
 
-    const auto uploadCmdBuffer = std::get<1>(cmdBuffersForIO);
-    const auto uploadCmdBufferFence = std::get<2>(cmdBuffersForIO);
+    // check device feature supported
+    if (vk12FeatureCaps.bufferDeviceAddress)
+    {
+        // textures
+        // 1. create image
+        // 2. create image view
+        // 3. upload through stage buffer
+        size_t textureId = 0;
+        for (const auto &texture : _scene->textures)
+        {
+            // // log(Level::Info, "texture: ", textureId);
 
+            // // 1. create Image
+            // const auto textureMipLevels = getMipLevelsCount(texture->width,
+            //                                                 texture->height);
+            // const uint32_t textureLayoutCount = 1;
+            // const VkExtent3D textureExtent = {static_cast<uint32_t>(texture->width),
+            //                                   static_cast<uint32_t>(texture->height), 1};
+            // const bool generateMipmaps = true;
+            // const auto imageEntity = _ctx.createImage("glb_tex_" + std::to_string(textureId),
+            //                                           VK_IMAGE_TYPE_2D,
+            //                                           VK_FORMAT_R8G8B8A8_UNORM,
+            //                                           textureExtent,
+            //                                           textureMipLevels,
+            //                                           textureLayoutCount,
+            //                                           VK_SAMPLE_COUNT_1_BIT,
+            //                                           // usage here: both dst and src as mipmap generation
+            //                                           VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+            //                                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+            //                                           generateMipmaps);
+
+            // _glbImageEntities.emplace_back(imageEntity);
+
+            // life cycle should be within uploadGPU scope only
+
+            // // write raw data from cpu to the mipmap level 0 of image
+            // const auto stagingBufferSizeForImage = std::get<3>(imageEntity).size;
+
+            // // caution: async io race condition from multi-threading
+            // // createStagingBuffer must be in the same thread of gpu data uploader
+            // _glbImageStagingBuffers.emplace_back(_ctx.createStagingBuffer(
+            //     "Staging Buffer Texture " + std::to_string(textureId),
+            //     stagingBufferSizeForImage));
+
+            // use case of packaged_task
+            // bind the arguments directly before you construct the task,
+            // in which case the task itself now has a signature that takes no arguments
+            auto textureReadyCB = [this](int textureId, ImageEntity imageEntity)
+            {
+                const auto dstSets = _descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::TEX_SAMP]];
+                _ctx.bindTextureToDescriptorSet(
+                    {imageEntity},
+                    dstSets[0],
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    textureId);
+                log(Level::Info, "genTextureMipmaps completed !");
+            };
+
+            log(Level::Info, "Texture address: ", texture.get());
+
+            std::packaged_task<uploadTextureFn> task(std::bind(
+                &uploadTextureToGPU,
+                &_ctx,
+                textureId,
+                "Staging Buffer Texture " + std::to_string(textureId),
+                texture.get(),
+                cmdBuffersForMipmap,
+                cmdBuffersForTransferOnly,
+                &_asyncTaskQueueForGenMipmaps,
+                _asyncTransferSemaphorePool,
+                textureReadyCB,
+                _glbImageStagingBuffers,
+                _glbImageEntities));
+
+            std::future futureHandle = task.get_future();
+            // cache the future for retrieve in the future action.
+            _asyncUploadTextureTaskFutures.emplace_back(std::move(futureHandle));
+
+            log(Level::Info, "_asyncTaskQueue.push");
+
+            _asyncTaskQueue.push(std::move(task));
+
+            ++textureId;
+
+            // std::this_thread::sleep_for(0.01s);
+        }
+    }
+}
+
+void VkApplication::preloadGLB()
+{
     std::string filename = getAssetPath() + "\\" + _model;
 
     std::vector<char> glbContent;
@@ -1201,15 +1484,32 @@ void VkApplication::loadGLB()
     glbContent = readFile(filename, true);
 #endif
     GltfBinaryIOReader reader;
-    std::shared_ptr<Scene> scene = reader.read(glbContent);
-    _numMeshes = scene->meshes.size();
+    _scene = reader.read(glbContent);
+    _numMeshes = _scene->meshes.size();
+    _numTextures = _scene->textures.size();
+}
+
+void VkApplication::loadGLB()
+{
+    const auto vk12FeatureCaps = _ctx.getVk12FeatureCaps();
+    auto logicalDevice = _ctx.getLogicDevice();
+    auto vmaAllocator = _ctx.getVmaAllocator();
+    const auto selectedPhysicalDevice = _ctx.getSelectedPhysicalDevice();
+    const auto selectedPhysicalDeviceProp = _ctx.getSelectedPhysicalDeviceProp();
+
+    // auto cmdBuffersForIO = _cmdBuffers[COMMAND_SEMANTIC::IO];
+    auto cmdBuffersForIO = _ctx.getCommandBufferForIO();
+    auto cmdBuffersForTransferOnly = _ctx.getCommandBufferForTransferOnly();
+
+    const auto uploadCmdBuffer = std::get<1>(cmdBuffersForIO);
+    const auto uploadCmdBufferFence = std::get<2>(cmdBuffersForIO);
 
     // check device feature supported
     if (vk12FeatureCaps.bufferDeviceAddress)
     {
         {
             // ssbo for vertices
-            auto bufferByteSize = scene->totalVerticesByteSize;
+            auto bufferByteSize = _scene->totalVerticesByteSize;
             _compositeVBSizeInByte = bufferByteSize;
             _compositeVB = _ctx.createDeviceLocalBuffer(
                 "Device Vertices Buffer Combo",
@@ -1221,7 +1521,7 @@ void VkApplication::loadGLB()
 
         {
             // ssbo for ib
-            auto bufferByteSize = scene->totalIndexByteSize;
+            auto bufferByteSize = _scene->totalIndexByteSize;
             _compositeIBSizeInByte = bufferByteSize;
             _compositeIB = _ctx.createDeviceLocalBuffer(
                 "Device Indices Buffer Combo",
@@ -1241,11 +1541,11 @@ void VkApplication::loadGLB()
         // offset into composite vertice buffer
         uint32_t vertexOffset = 0u;
         std::vector<IndirectDrawForVulkan> indirectDrawParams;
-        indirectDrawParams.reserve(scene->meshes.size());
+        indirectDrawParams.reserve(_scene->meshes.size());
         uint32_t deviceCompositeVertexBufferOffsetInBytes = 0u;
         uint32_t deviceCompositeIndicesBufferOffsetInBytes = 0u;
         size_t meshId = 0;
-        for (const auto &mesh : scene->meshes)
+        for (const auto &mesh : _scene->meshes)
         {
             auto vertexByteSizeMesh = sizeof(Vertex) * mesh.vertices.size();
             auto vertexBufferPtr = reinterpret_cast<const void *>(mesh.vertices.data());
@@ -1297,76 +1597,81 @@ void VkApplication::loadGLB()
             firstIndex += mesh.indices.size();
             ++meshId;
         }
-        // textures
-        // 1. create image
-        // 2. create image view
-        // 3. upload through stage buffer
-        size_t textureId = 0;
-        for (const auto &texture : scene->textures)
-        {
-            // 1. create Image
-            const auto textureMipLevels = getMipLevelsCount(texture->width,
-                                                            texture->height);
-            const uint32_t textureLayoutCount = 1;
-            const VkExtent3D textureExtent = {static_cast<uint32_t>(texture->width),
-                                              static_cast<uint32_t>(texture->height), 1};
-            const bool generateMipmaps = true;
-            const auto imageEntity = _ctx.createImage("glb_tex_" + std::to_string(textureId),
-                                                      VK_IMAGE_TYPE_2D,
-                                                      VK_FORMAT_R8G8B8A8_UNORM,
-                                                      textureExtent,
-                                                      textureMipLevels,
-                                                      textureLayoutCount,
-                                                      VK_SAMPLE_COUNT_1_BIT,
-                                                      // usage here: both dst and src as mipmap generation
-                                                      VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-                                                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-                                                      generateMipmaps);
+        // // textures
+        // // 1. create image
+        // // 2. create image view
+        // // 3. upload through stage buffer
+        // size_t textureId = 0;
+        // for (const auto &texture : scene->textures)
+        // {
+        //     // 1. create Image
+        //     const auto textureMipLevels = getMipLevelsCount(texture->width,
+        //                                                     texture->height);
+        //     const uint32_t textureLayoutCount = 1;
+        //     const VkExtent3D textureExtent = {static_cast<uint32_t>(texture->width),
+        //                                       static_cast<uint32_t>(texture->height), 1};
+        //     const bool generateMipmaps = true;
+        //     const auto imageEntity = _ctx.createImage("glb_tex_" + std::to_string(textureId),
+        //                                               VK_IMAGE_TYPE_2D,
+        //                                               VK_FORMAT_R8G8B8A8_UNORM,
+        //                                               textureExtent,
+        //                                               textureMipLevels,
+        //                                               textureLayoutCount,
+        //                                               VK_SAMPLE_COUNT_1_BIT,
+        //                                               // usage here: both dst and src as mipmap generation
+        //                                               VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+        //                                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+        //                                               generateMipmaps);
 
-            _glbImageEntities.emplace_back(imageEntity);
+        //     _glbImageEntities.emplace_back(imageEntity);
 
-            // write raw data from cpu to the mipmap level 0 of image
-            const auto stagingBufferSizeForImage = std::get<3>(imageEntity).size;
-            _glbImageStagingBuffers.emplace_back(_ctx.createStagingBuffer(
-                "Staging Buffer Texture " + std::to_string(textureId),
-                stagingBufferSizeForImage));
+        //     // write raw data from cpu to the mipmap level 0 of image
+        //     const auto stagingBufferSizeForImage = std::get<3>(imageEntity).size;
+        //     _glbImageStagingBuffers.emplace_back(_ctx.createStagingBuffer(
+        //         "Staging Buffer Texture " + std::to_string(textureId),
+        //         stagingBufferSizeForImage));
 
-            _ctx.writeImage(
-                _glbImageEntities.back(),
-                _glbImageStagingBuffers.back(),
-                cmdBuffersForIO,
-                texture->data);
+        //     _ctx.writeImage(
+        //         _glbImageEntities.back(),
+        //         _glbImageStagingBuffers.back(),
+        //         cmdBuffersForIO,
+        //         texture->data);
 
-            _ctx.generateMipmaps(
-                _glbImageEntities.back(),
-                _glbImageStagingBuffers.back(),
-                cmdBuffersForIO);
+        //     _ctx.generateMipmaps(
+        //         _glbImageEntities.back(),
+        //         _glbImageStagingBuffers.back(),
+        //         cmdBuffersForIO);
 
-            // use case of packaged_task
-            // bind the arguments directly before you construct the task,
-            // in which case the task itself now has a signature that takes no arguments
-            std::packaged_task<uploadTextureFn> task(std::bind(
-                &uploadTextureToGPU,
-                "Staging Buffer Texture " + std::to_string(textureId),
-                stagingBufferSizeForImage,
-                _glbImageEntities.back(),
-                _glbImageStagingBuffers.back(),
-                cmdBuffersForIO,
-                texture->data));
+        //     // // use case of packaged_task
+        //     // // bind the arguments directly before you construct the task,
+        //     // // in which case the task itself now has a signature that takes no arguments
+        //     // std::packaged_task<uploadTextureFn> task(std::bind(
+        //     //     &uploadTextureToGPU,
+        //     //     &_ctx,
+        //     //     "Staging Buffer Texture " + std::to_string(textureId),
+        //     //     stagingBufferSizeForImage,
+        //     //     _glbImageEntities.back(),
+        //     //     _glbImageStagingBuffers.back(),
+        //     //     cmdBuffersForIO,
+        //     //     cmdBuffersForTransferOnly,
+        //     //     texture->data,
+        //     //     &_asyncTaskQueueForGenMipmaps
 
-            std::future futureHandle = task.get_future();
-            // cache the future for retrieve in the future action.
-            _asyncUploadTextureTaskFutures.emplace_back(std::move(futureHandle));
-            _asyncTaskQueue.push(std::move(task));
+        //     //     ));
 
-            ++textureId;
-        }
+        //     // std::future futureHandle = task.get_future();
+        //     // // cache the future for retrieve in the future action.
+        //     // _asyncUploadTextureTaskFutures.emplace_back(std::move(futureHandle));
+        //     // _asyncTaskQueue.push(std::move(task));
+
+        //     ++textureId;
+        // }
 
         // sampler
         _glbSamplerEntities.emplace_back(_ctx.createSampler("sampler0"));
 
         // packing materials into composite buffer
-        const auto materialByteSize = sizeof(Material) * scene->materials.size();
+        const auto materialByteSize = sizeof(Material) * _scene->materials.size();
         {
             // create device buffer
             auto bufferByteSize = materialByteSize;
@@ -1380,7 +1685,7 @@ void VkApplication::loadGLB()
         }
         {
             // create staging buffer
-            auto materialBufferPtr = reinterpret_cast<const void *>(scene->materials.data());
+            auto materialBufferPtr = reinterpret_cast<const void *>(_scene->materials.data());
 
             // staging buffer for matBuffer
             _stagingMatBuffer = _ctx.createStagingBuffer("Staging Material Buffer", materialByteSize);

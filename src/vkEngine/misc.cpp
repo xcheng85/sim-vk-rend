@@ -218,6 +218,32 @@ VkShaderModule createShaderModule(
     return res;
 }
 
+// input: shaderModule Meta
+// output: to meet the vk api
+std::vector<VkPipelineShaderStageCreateInfo> gatherPipelineShaderStageCreateInfos(
+    const std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, const char *, const VkSpecializationInfo *>> &shaderModuleEntities)
+{
+    std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+    shaderStages.reserve(shaderModuleEntities.size());
+
+    for (const auto &[shaderModuleStage, shaderModuleEntity] : shaderModuleEntities)
+    {
+        const auto shaderModuleHandle = std::get<0>(shaderModuleEntity);
+        const auto entryFunctionName = std::get<1>(shaderModuleEntity);
+        const auto pSpecializationInfo = std::get<2>(shaderModuleEntity);
+
+        VkPipelineShaderStageCreateInfo shaderStageInfo{};
+        shaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shaderStageInfo.stage = shaderModuleStage;
+        shaderStageInfo.module = shaderModuleHandle;
+        shaderStageInfo.pName = entryFunctionName;
+        shaderStageInfo.pSpecializationInfo = pSpecializationInfo;
+
+        shaderStages.emplace_back(shaderStageInfo);
+    }
+    return shaderStages;
+}
+
 VkImageViewType getImageViewType(VkImageType imageType)
 {
     switch (imageType)

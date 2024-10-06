@@ -164,6 +164,8 @@ VkShaderModule createShaderModule(
     const std::string &entryPoint,
     const std::string &correlationId);
 
+std::vector<VkPipelineShaderStageCreateInfo> gatherPipelineShaderStageCreateInfos(const std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, const char *, const VkSpecializationInfo *>> &shaderModuleEntities);
+
 template <typename T>
 void setCorrlationId(T handle, VkDevice logicalDevice, VkObjectType type, const std::string &name)
 {

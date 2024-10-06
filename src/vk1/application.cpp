@@ -63,6 +63,13 @@ void VkApplication::init()
 
     loadGLBTextureAsync();
 
+    _cullFustrum = std::make_unique<CullFustrum>();
+    _cullFustrum->setCamera(&this->_camera);
+    _cullFustrum->setContext(&this->_ctx);
+    _cullFustrum->setScene(_scene);
+    _cullFustrum->setIndirectDrawBuffer(&_indirectDrawB);
+    _cullFustrum->finalizeInit();
+
     createGraphicsPipeline();
     createSwapChainFramebuffers();
     // createPerFrameSyncObjects();
@@ -289,12 +296,15 @@ void VkApplication::updateUniformBuffer(int currentFrameId)
     auto mappedMemory = std::get<3>(_uniformBuffers[currentFrameId]);
 
     auto view = _camera.viewTransformLH();
+    auto verticalFov = _camera.verticalFov();
+    auto nplaneD = _camera.nearPlaneD();
+    auto fplaneD = _camera.farPlaneD();
     // auto persPrj = PerspectiveProjectionTransformLH(0.0001f, 200.0f, 0.3f,
     //                                                 (float)swapChainExtent.width /
     //                                                     (float)swapChainExtent.height);
 
     // use glm
-    auto proj = glm::perspective(glm::radians(65.f), static_cast<float>(swapChainExtent.width) / swapChainExtent.height, 0.1f, 500.f);
+    auto proj = glm::perspective(glm::radians(verticalFov), static_cast<float>(swapChainExtent.width) / swapChainExtent.height, nplaneD, fplaneD);
 
     // mat4x4f identity(1.0f);
     // auto mv = MatrixMultiply4x4(identity, view);

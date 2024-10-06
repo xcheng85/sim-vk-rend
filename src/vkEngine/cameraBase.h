@@ -2,6 +2,7 @@
 
 #include <array>
 #include <string>
+#include <utility>
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -15,6 +16,12 @@
 #include <fp.h>
 
 using namespace std;
+
+using Plane = glm::vec4;
+
+// using FustrumPlanes = Plane[6]; // function could not return array
+// benifits of std::array than old-style array
+using FustrumPlanes = std::array<Plane, 6>;
 
 class CameraBase
 {
@@ -44,6 +51,31 @@ public:
     virtual void handleMouseClickEvent(int button, int state, int x, int y) = 0;
     virtual void handleMouseWheelEvent(float v) = 0;
 
+    // for fustrum volume
+    inline float nearPlaneD() const
+    {
+        return _nearPlaneD;
+    }
+    inline float farPlaneD() const
+    {
+        return _farPlaneD;
+    }
+    inline float verticalFov() const
+    {
+        return _verticalFov;
+    }
+    inline float aspect() const
+    {
+        return _aspect;
+    }
+    virtual FustrumPlanes fustrumPlanes() = 0;
+
 protected:
     vec2f _prevMouseCoordsInNdc{-2.f};
+
+    glm::vec3 _eye;
+    float _nearPlaneD{0.0f};
+    float _farPlaneD{1.0f};
+    float _verticalFov{65.f};
+    float _aspect{1.0f};
 };

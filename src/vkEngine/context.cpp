@@ -1585,12 +1585,12 @@ BufferEntity VkContext::Impl::createBuffer(
                              &allocation, nullptr));
     vmaGetAllocationInfo(_vmaAllocator, allocation, &allocationInfo);
     if (!mapping)
-        return make_tuple(buffer, allocation, allocationInfo, nullptr);
+        return make_tuple(buffer, allocation, allocationInfo, nullptr, bufferSizeInBytes);
     else
     {
         MappingAddressType address;
         VK_CHECK(vmaMapMemory(_vmaAllocator, allocation, &address));
-        return make_tuple(buffer, allocation, allocationInfo, address);
+        return make_tuple(buffer, allocation, allocationInfo, address, bufferSizeInBytes);
     }
 }
 

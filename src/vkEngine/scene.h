@@ -6,6 +6,11 @@
 #include <vector.h>
 #include <matrix.h>
 #include <misc.h>
+
+#include <glm/ext.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtx/transform.hpp>
+
 // mimic
 // struct VkDrawIndexedIndirectCommand {
 //    uint32_t    indexCount;
@@ -71,12 +76,17 @@ struct Vertex
     }
 };
 
+struct BoundingBox
+{
+    glm::vec4 center;
+    glm::vec4 extents;
+};
+
 struct Mesh
 {
     std::vector<Vertex> vertices{};
     std::vector<uint32_t> indices{};
     int32_t materialIdx{-1};
-
     vec3f minAABB{std::array{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
                              std::numeric_limits<float>::max()}};
     vec3f maxAABB{std::array{-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max(),

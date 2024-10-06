@@ -47,6 +47,8 @@
 #include <queuethreadsafe.h>
 #include <future> //packaged_task<>
 
+#include <cullFustrum.h>
+
 #if defined(__ANDROID__)
 // functor for custom deleter for unique_ptr
 struct AndroidNativeWindowDeleter
@@ -217,4 +219,8 @@ private:
 
     // a release and acquire pair is performed by a VkSemaphore
     std::vector<VkSemaphore> _asyncTransferSemaphorePool;
+
+    // compare CullFustrum _cullFustrum, cannot compile due to ctor restriction
+    // benifits of unique_ptr
+    std::unique_ptr<CullFustrum> _cullFustrum;
 };

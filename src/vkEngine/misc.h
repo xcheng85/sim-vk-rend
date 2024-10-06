@@ -186,3 +186,26 @@ inline vec2f screenSpace2Ndc(vec2i screenspaceCoord, vec2i screenDimension)
     return vec2f(std::array<float, 2>({static_cast<float>(screenspaceCoord[COMPONENT::X]) * 2.f / screenDimension[COMPONENT::X] - 1.f,
                                        1.f - 2.f * static_cast<float>(screenspaceCoord[COMPONENT::Y]) / screenDimension[COMPONENT::Y]}));
 }
+
+// math
+using Plane = glm::vec4;
+struct Fustrum
+{
+    static constexpr uint32_t sNumPlanes{6};
+    alignas(16) glm::vec4 planes[sNumPlanes];
+};
+
+inline glm::vec3 calculatePlaneNormal(const glm::vec3 &p1, const glm::vec3 &p2, const glm::vec3 &p3)
+{
+    const auto e1 = p2 - p1;
+    const auto e2 = p3 - p1;
+    return glm::normalize(glm::cross(e1, e2));
+}
+
+inline Plane createPlaneFromPoints(const glm::vec3 &p1, const glm::vec3 &p2, const glm::vec3 &p3)
+{
+    // d = -n . p;
+    const auto n = calculatePlaneNormal(p1, p2, p3);
+    const auto d = -glm::dot(n, p1);
+    return Plane(n, d);
+}

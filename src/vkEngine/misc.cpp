@@ -61,6 +61,10 @@ EShLanguage shaderStageFromFileName(const std::filesystem::path &path)
     {
         return EShLangFragment;
     }
+    else if (ext == ".comp")
+    {
+        return EShLangCompute;
+    }
     else
     {
         ASSERT(false, "unsupported shader stage");

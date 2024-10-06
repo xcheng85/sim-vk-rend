@@ -128,13 +128,6 @@ public:
                     _winDimension[COMPONENT::Y] = event.window.data2;
                 }
                 break;
-
-                //  if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED) {
-                //                 win_width = event.window.data1;
-                //                 win_height = event.window.data2;
-                //                 proj = glm::perspective(
-                //                     glm::radians(65.f), static_cast<float>(win_width) / win_height, 0.1f, 500.f);
-                //             }
             }
         }
     }

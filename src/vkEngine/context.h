@@ -88,7 +88,7 @@ enum IMAGE_ENTITY_OFFSET : int
 };
 
 using MappingAddressType = void*;
-using BufferEntity = std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo, MappingAddressType>;
+using BufferEntity = std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo, MappingAddressType, VkDeviceSize>;
 
 class VkContext
 {

@@ -21,12 +21,19 @@ struct IndirectDrawDef1 {
 };
 
 // 32 bit alignment
+// pay attention to the padding in the struct
 struct Material {
     int basecolorTextureId;
     int basecolorSamplerId;
     int metallicRoughnessTextureId;
     int padding;
     vec4 basecolor;
+};
+
+// bounding box and sub mesh
+struct BoundingBox {
+  vec4 center;
+  vec4 extents;
 };
 
 layout (set = 0, binding = 0) uniform UBO {

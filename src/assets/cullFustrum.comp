@@ -1,0 +1,93 @@
+#version 460 // gl_BaseVertex and gl_DrawID
+#extension GL_EXT_nonuniform_qualifier : require
+#extension GL_GOOGLE_include_directive : require
+
+#include "common.glsl"
+
+#define IDR_SETID 0 
+#define BOUNDINGBOX_SETID 1
+#define FUSTRUMS_SETID 2
+#define CULLED_IDR 3
+#define CULLED_IDR_COUNTER 4
+
+const uint numFustrumPlanes = 6;
+
+// avoid naming confliction with what has been defined in "common.glsl"
+layout(set = IDR_SETID, binding = 0) readonly buffer IndirectDrawBufferToCull {
+  IndirectDrawDef1 indirectDrawsToCull[];
+};
+
+layout(set = BOUNDINGBOX_SETID, binding = 0) readonly buffer BoundingBoxBuffer {
+  BoundingBox boundingBoxs[];
+};
+
+// frequently updating
+layout(set = FUSTRUMS_SETID, binding = 0) uniform Fustrum {
+  vec4 frustumPlanes[numFustrumPlanes];
+};
+
+layout(set = CULLED_IDR, binding = 0) writeonly buffer CulledIndirectDrawBuffer {
+  IndirectDrawDef1 culledIndirectDraws[];
+};
+
+layout(set = CULLED_IDR_COUNTER, binding = 0) writeonly buffer CulledIndirectDrawCounterBuffer {
+  uint drawCountAfterCulled;
+};
+
+layout(push_constant) uniform PushConsts {
+	uint count;
+} MeshesToCull;
+
+// work group; this is the smallest amount of compute operations
+// This is known as the local size of the work group.
+// host side: The number of work groups that a compute operation is executed with is defined by the user when they invoke the compute operation
+// order-less: So your compute shader should not rely on the order in which individual groups are processed.
+
+
+// if the local size of a compute shader is (128, 1, 1), and you execute it with a work group count of (16, 8, 64), then you will get 1,048,576 separate shader invocation
+// (128, 1, 1) defined in shader
+// (16, 8, 64) invocated in the cpu code
+// shared variable within one worker group
+
+// the mesh data is 1d, unlike image
+layout(local_size_x = 32) in;
+
+// chapter 8.2.4 of book "Math for 3D Game Programmming and Computer Graphics" [Lengyel]
+// 1. box's effective radius
+void cullMeshAgainstFustrum(uint gMeshId) {
+  BoundingBox bb = boundingBoxs[gMeshId];
+  bool shouldBeCulled = false;
+  for (uint i = 0; i < numFustrumPlanes; ++i) {
+    vec3 planeNormal = frustumPlanes[i].xyz;
+    float radiusEffective = 0.5 * dot(abs(planeNormal), bb.extents.xyz);
+    // 4D dot product: L.Q
+    float distFromCenter = dot(bb.center.xyz, planeNormal) + frustumPlanes[i].w;
+    if (distFromCenter <= -radiusEffective) {
+      shouldBeCulled = true;
+    }
+  }
+  if (!shouldBeCulled) {
+    // like linked list
+    uint oldValueAsIndex = atomicAdd(drawCountAfterCulled, 1);
+    // write to ssbo
+    culledIndirectDraws[oldValueAsIndex] = indirectDraws[gMeshId];
+  }
+}
+
+void main()
+{
+  // gl_GlobalInvocationID = gl_WorkGroupID * gl_WorkGroupSize + gl_LocalInvocationID;
+  uint gThreadId = gl_GlobalInvocationID.x;
+  if (gThreadId == 0) {
+    // init value in the first thread
+    uint oldvalue = atomicExchange(drawCountAfterCulled, 0);
+  }
+  // ensure the drawCountAfterCulled = 0 is visible to all the threads.
+  // To synchronize reads and writes between invocations within a work group, you must employ the barrier() function. 
+  // This forces an explicit synchronization between all invocations in the work group.
+  barrier();
+  // boundary checking
+  if (gThreadId < MeshesToCull.count) {
+    cullMeshAgainstFustrum(gThreadId);
+  }
+}

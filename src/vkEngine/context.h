@@ -87,7 +87,7 @@ enum IMAGE_ENTITY_OFFSET : int
     IMAGE_FORMAT
 };
 
-using MappingAddressType = void*;
+using MappingAddressType = void *;
 using BufferEntity = std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo, MappingAddressType, VkDeviceSize>;
 
 class VkContext
@@ -182,7 +182,17 @@ public:
                                                              const VkSpecializationInfo *>>
             vsShaderEntities,
         const std::vector<VkDescriptorSetLayout> &dsLayouts,
+        const std::vector<VkPushConstantRange> &pushConstants,
         const VkRenderPass &renderPass);
+
+    std::tuple<VkPipeline, VkPipelineLayout> createComputePipeline(
+        std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule,
+                                                             const char *,
+                                                             // std::string, /** dangling pointer issues */
+                                                             const VkSpecializationInfo *>>
+            vsShaderEntities,
+        const std::vector<VkDescriptorSetLayout> &dsLayouts,
+        const std::vector<VkPushConstantRange> &pushConstants);
 
     std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> allocateDescriptorSet(
         const VkDescriptorPool pool,
@@ -272,7 +282,7 @@ public:
     // A queue family ownership transfer consists of two distinct parts:
     // Release exclusive ownership from the source queue family: thread 1
     // Acquire exclusive ownership for the destination queue family: thread 2
-    // a pass through 
+    // a pass through
     // An application must ensure that these operations occur in the correct order
     // by defining an execution dependency between them, e.g. using a semaphore.
 
@@ -307,19 +317,17 @@ public:
 
     // step1: release part of queue family ownership transfer
     void releaseQueueFamilyOwnership(
-        const CommandBufferEntity& cmdBuffer, 
-        const ImageEntity& image, 
-        uint32_t srcQueueFamilyIndex, 
-        uint32_t dstQueueFamilyIndex
-    );
+        const CommandBufferEntity &cmdBuffer,
+        const ImageEntity &image,
+        uint32_t srcQueueFamilyIndex,
+        uint32_t dstQueueFamilyIndex);
 
     // step2: acquire part of queue family ownership transfer
     void acquireQueueFamilyOwnership(
-        const CommandBufferEntity& cmdBuffer, 
-        const ImageEntity& image, 
-        uint32_t srcQueueFamilyIndex, 
-        uint32_t dstQueueFamilyIndex
-    );
+        const CommandBufferEntity &cmdBuffer,
+        const ImageEntity &image,
+        uint32_t srcQueueFamilyIndex,
+        uint32_t dstQueueFamilyIndex);
 
     // features chains
     // now is to toggle features selectively

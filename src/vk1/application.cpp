@@ -68,6 +68,7 @@ void VkApplication::init()
     _cullFustrum->setContext(&this->_ctx);
     _cullFustrum->setScene(_scene);
     _cullFustrum->setIndirectDrawBuffer(&_indirectDrawB);
+    _cullFustrum->setDescriptorPool(this->_descriptorSetPool);
     _cullFustrum->finalizeInit();
 
     createGraphicsPipeline();
@@ -507,8 +508,8 @@ void VkApplication::createGraphicsPipeline()
 
     SpecializationDataDef1 specializationData;
     specializationData.lightingModel = 0;
-    std::array<VkSpecializationMapEntry, 1> specializationMapEntries;
 
+    std::array<VkSpecializationMapEntry, 1> specializationMapEntries;
     // layout (constant_id = 0) const int LIGHTING_MODEL = 0;
     specializationMapEntries[0].constantID = 0;
     specializationMapEntries[0].size = sizeof(specializationData.lightingModel);
@@ -526,6 +527,7 @@ void VkApplication::createGraphicsPipeline()
          {VK_SHADER_STAGE_FRAGMENT_BIT,
           make_tuple(_fsShaderModule, entryPoint.c_str(), &specializationInfo)}},
         _descriptorSetLayouts,
+        {},
         _swapChainRenderPass);
 }
 

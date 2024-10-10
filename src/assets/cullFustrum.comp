@@ -70,7 +70,7 @@ void cullMeshAgainstFustrum(uint gMeshId) {
     // like linked list
     uint oldValueAsIndex = atomicAdd(drawCountAfterCulled, 1);
     // write to ssbo
-    culledIndirectDraws[oldValueAsIndex] = indirectDraws[gMeshId];
+    culledIndirectDraws[oldValueAsIndex] = indirectDrawsToCull[gMeshId];
   }
 }
 

@@ -4,6 +4,7 @@
 #extension GL_GOOGLE_include_directive : require
 
 #include "common.glsl"
+#include "indirectDrawCommon.glsl"
 
 // output from vs to fs
 // flat: no interpolation

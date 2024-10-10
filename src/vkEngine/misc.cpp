@@ -136,6 +136,7 @@ std::vector<char> glslToSpirv(const std::vector<char> &shaderText,
     // preprocessedGLSL = removeUnnecessaryLines(preprocessedGLSL);
 
     const char *preprocessedGLSLStr = preprocessedGLSL.c_str();
+    std::cout << preprocessedGLSL << std::endl;
 
     // without include
     glslang::TShader tshader(shaderStage);

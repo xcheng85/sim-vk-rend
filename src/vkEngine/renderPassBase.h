@@ -16,6 +16,8 @@ protected:
     VkContext *_ctx{nullptr};
     std::shared_ptr<Scene> _scene{nullptr};
     const CameraBase *_camera{nullptr};
+    // descriptorset pool, every render pass needs to allocate ds from it
+    VkDescriptorPool _dsPool{VK_NULL_HANDLE};
 };
 
 class VkContextAccessor
@@ -38,4 +40,12 @@ class CameraAccessor
 public:
     virtual void setCamera(const CameraBase *) = 0;
     virtual const CameraBase &camera() const = 0;
+};
+
+// design for shared ds pool
+class DescriptorPoolAccessor
+{
+public:
+    virtual void setDescriptorPool(const VkDescriptorPool) = 0;
+    virtual const VkDescriptorPool descriptorPool() const = 0;
 };

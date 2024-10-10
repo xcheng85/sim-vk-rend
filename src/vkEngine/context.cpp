@@ -162,7 +162,13 @@ public:
     std::tuple<VkPipeline, VkPipelineLayout> createGraphicsPipeline(
         const std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, const char *, const VkSpecializationInfo *>> &shaderModuleEntities,
         const std::vector<VkDescriptorSetLayout> &dsLayouts,
+        const std::vector<VkPushConstantRange> &pushConstants,
         const VkRenderPass &renderPass);
+
+    std::tuple<VkPipeline, VkPipelineLayout> createComputePipeline(
+        const std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, const char *, const VkSpecializationInfo *>> &shaderModuleEntities,
+        const std::vector<VkDescriptorSetLayout> &dsLayouts,
+        const std::vector<VkPushConstantRange> &pushConstants);
 
     std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> allocateDescriptorSet(
         const VkDescriptorPool pool,
@@ -1818,31 +1824,14 @@ std::tuple<VkPipeline, VkPipelineLayout> VkContext::Impl::createGraphicsPipeline
     const std::unordered_map<VkShaderStageFlagBits,
                              std::tuple<VkShaderModule, const char *, const VkSpecializationInfo *>> &shaderModuleEntities,
     const std::vector<VkDescriptorSetLayout> &dsLayouts,
+    const std::vector<VkPushConstantRange> &pushConstants,
     const VkRenderPass &renderPass)
 {
     std::tuple<VkPipeline, VkPipelineLayout> res;
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
 
-    std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
-    shaderStages.reserve(shaderModuleEntities.size());
-
-    for (const auto &[shaderModuleStage, shaderModuleEntity] : shaderModuleEntities)
-    {
-        const auto shaderModuleHandle = std::get<0>(shaderModuleEntity);
-        const auto entryFunctionName = std::get<1>(shaderModuleEntity);
-        const auto pSpecializationInfo = std::get<2>(shaderModuleEntity);
-
-        VkPipelineShaderStageCreateInfo shaderStageInfo{};
-        shaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        shaderStageInfo.stage = shaderModuleStage;
-        shaderStageInfo.module = shaderModuleHandle;
-        shaderStageInfo.pName = entryFunctionName;
-        shaderStageInfo.pSpecializationInfo = pSpecializationInfo;
-
-        shaderStages.emplace_back(shaderStageInfo);
-    }
-
+    std::vector<VkPipelineShaderStageCreateInfo> shaderStages = gatherPipelineShaderStageCreateInfos(shaderModuleEntities);
     // vao in opengl, this settings means no vao (vbo), create data in the vs directly
 
     // without vao rendering. ex: ssbo + vs.
@@ -1954,8 +1943,8 @@ std::tuple<VkPipeline, VkPipelineLayout> VkContext::Impl::createGraphicsPipeline
     // multiple set layouts binded to the graphics pipeline
     pipelineLayoutInfo.setLayoutCount = (uint32_t)dsLayouts.size();
     pipelineLayoutInfo.pSetLayouts = dsLayouts.data();
-    pipelineLayoutInfo.pushConstantRangeCount = 0;
-    pipelineLayoutInfo.pPushConstantRanges = nullptr;
+    pipelineLayoutInfo.pushConstantRangeCount = pushConstants.size();
+    pipelineLayoutInfo.pPushConstantRanges = pushConstants.data();
 
     VK_CHECK(vkCreatePipelineLayout(_logicalDevice, &pipelineLayoutInfo, nullptr, &pipelineLayout));
 
@@ -1988,6 +1977,38 @@ std::tuple<VkPipeline, VkPipelineLayout> VkContext::Impl::createGraphicsPipeline
 
     VK_CHECK(vkCreateGraphicsPipelines(_logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline));
     return make_tuple(graphicsPipeline, pipelineLayout);
+}
+
+// only need shader stage and pipelinelayout
+std::tuple<VkPipeline, VkPipelineLayout> VkContext::Impl::createComputePipeline(
+    const std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, const char *, const VkSpecializationInfo *>> &shaderModuleEntities,
+    const std::vector<VkDescriptorSetLayout> &dsLayouts,
+    const std::vector<VkPushConstantRange> &pushConstants)
+{
+    std::tuple<VkPipeline, VkPipelineLayout> res;
+    VkPipelineLayout pipelineLayout;
+    VkPipeline computePipeline;
+
+    std::vector<VkPipelineShaderStageCreateInfo> shaderStages = gatherPipelineShaderStageCreateInfos(shaderModuleEntities);
+    ASSERT(shaderStages.size() == 1, "compute shader pipeline should have only 1 stage");
+
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    // multiple set layouts binded to the graphics pipeline
+    pipelineLayoutInfo.setLayoutCount = (uint32_t)dsLayouts.size();
+    pipelineLayoutInfo.pSetLayouts = dsLayouts.data();
+    pipelineLayoutInfo.pushConstantRangeCount = pushConstants.size();
+    pipelineLayoutInfo.pPushConstantRanges = pushConstants.data();
+
+    VK_CHECK(vkCreatePipelineLayout(_logicalDevice, &pipelineLayoutInfo, nullptr, &pipelineLayout));
+
+    VkComputePipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pipelineInfo.stage = shaderStages[0];
+    pipelineInfo.layout = pipelineLayout;
+
+    VK_CHECK(vkCreateComputePipelines(_logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &computePipeline));
+    return make_tuple(computePipeline, pipelineLayout);
 }
 
 std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> VkContext::Impl::allocateDescriptorSet(
@@ -2577,9 +2598,22 @@ VkDescriptorPool VkContext::createDescriptorSetPool(
 std::tuple<VkPipeline, VkPipelineLayout> VkContext::createGraphicsPipeline(
     std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, const char *, const VkSpecializationInfo *>> vsShaderEntities,
     const std::vector<VkDescriptorSetLayout> &dsLayouts,
+    const std::vector<VkPushConstantRange> &pushConstants,
     const VkRenderPass &renderPass)
 {
-    return _pimpl->createGraphicsPipeline(vsShaderEntities, dsLayouts, renderPass);
+    return _pimpl->createGraphicsPipeline(vsShaderEntities, dsLayouts, pushConstants, renderPass);
+}
+
+std::tuple<VkPipeline, VkPipelineLayout> VkContext::createComputePipeline(
+    std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule,
+                                                         const char *,
+                                                         // std::string, /** dangling pointer issues */
+                                                         const VkSpecializationInfo *>>
+        vsShaderEntities,
+    const std::vector<VkDescriptorSetLayout> &dsLayouts,
+    const std::vector<VkPushConstantRange> &pushConstants)
+{
+    return _pimpl->createComputePipeline(vsShaderEntities, dsLayouts, pushConstants);
 }
 
 std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> VkContext::allocateDescriptorSet(

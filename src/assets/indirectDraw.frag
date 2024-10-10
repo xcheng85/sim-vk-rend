@@ -3,6 +3,7 @@
 #extension GL_GOOGLE_include_directive : require
 
 #include "common.glsl"
+#include "indirectDrawCommon.glsl"
 
 layout(location = 0) in vec2 inTexCoord;
 layout(location = 1) in flat uint inMeshId;

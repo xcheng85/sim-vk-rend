@@ -79,12 +79,136 @@ public:
         initFustrumBuffer();
         initMeshBoundingBoxBuffer();
         initCulledIndirectDrawBuffer();
-
+        // step1: bind res to ds, then later on bind ds to the compute pipeline
         bindResourceToDescriptorSets();
+
+        uploadResource();
     }
 
-    virtual void execute(CommandBufferEntity cmd, int frameIndex) override
+    inline BufferEntity getCulledIDR() const
     {
+        return this->_culledIndirectDrawBuffer;
+    }
+
+    inline BufferEntity getCulledIDRCount() const
+    {
+        return this->_culledIndirectDrawCountBuffer;
+    }
+
+    virtual void execute(CommandBufferEntity cmd, int currentFrameId) override
+    {
+        auto commandBufferHandle = std::get<1>(cmd);
+        // for buffer memory barrier (two idr which shader writes into)
+        // shared compute/graphics queue family
+        auto commandQueueFamilyIndex = std::get<3>(cmd);
+        auto computePipelineHandle = std::get<0>(_computePipelineEntity);
+        auto computePipelineLayout = std::get<1>(_computePipelineEntity);
+        auto vmaAllocator = _ctx->getVmaAllocator();
+
+        const auto &fustrumBuffers = std::get<0>(_fustrumBuffers);
+        ASSERT(
+            currentFrameId >= 0 && currentFrameId < fustrumBuffers.size(),
+            "execute:: currentFrameId should be in a valid range");
+
+        auto vmaAllocation = std::get<1>(fustrumBuffers[currentFrameId]);
+        auto mappedMemory = std::get<3>(fustrumBuffers[currentFrameId]);
+
+        // update uniform buffer
+        auto frustrum = _camera->fustrumPlanes();
+        if (mappedMemory)
+        {
+            memcpy(mappedMemory, &frustrum, sizeof(Fustrum));
+        }
+        else
+        {
+            // racing condition due to vmaAllocator
+            void *mappedMemory{nullptr};
+            VK_CHECK(vmaMapMemory(vmaAllocator, vmaAllocation, &mappedMemory));
+            memcpy(mappedMemory, &frustrum, sizeof(Fustrum));
+            // memcpy(mappedMemory, &ubo, sizeof(ubo));
+            vmaUnmapMemory(vmaAllocator, vmaAllocation);
+        }
+        // update push constants
+        const auto numMeshesToCull = uint32_t(_bb.size());
+        vkCmdBindPipeline(commandBufferHandle, VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineHandle);
+        vkCmdPushConstants(commandBufferHandle, computePipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &numMeshesToCull);
+
+        // resource and ds to the shaders of this pipeline
+        // IDR = 0,
+        // BOUNDING_BOX,
+        // FUSTRUMS,
+        // CULLED_IDR,
+        // CULLED_IDR_COUNTER,
+        // DESC_LAYOUT_SEMANTIC_SIZE
+        vkCmdBindDescriptorSets(commandBufferHandle,
+                                VK_PIPELINE_BIND_POINT_COMPUTE,
+                                computePipelineLayout, 0, 1,
+                                &_descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::IDR]][0],
+                                0,
+                                nullptr);
+        vkCmdBindDescriptorSets(commandBufferHandle,
+                                VK_PIPELINE_BIND_POINT_COMPUTE,
+                                computePipelineLayout, 1, 1,
+                                &_descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::BOUNDING_BOX]][0],
+                                0,
+                                nullptr);
+        vkCmdBindDescriptorSets(commandBufferHandle,
+                                VK_PIPELINE_BIND_POINT_COMPUTE,
+                                computePipelineLayout, 2, 1,
+                                &_descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::FUSTRUMS]][currentFrameId],
+                                0,
+                                nullptr);
+        vkCmdBindDescriptorSets(commandBufferHandle,
+                                VK_PIPELINE_BIND_POINT_COMPUTE,
+                                computePipelineLayout, 3, 1,
+                                &_descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::CULLED_IDR]][0],
+                                0,
+                                nullptr);
+        vkCmdBindDescriptorSets(commandBufferHandle,
+                                VK_PIPELINE_BIND_POINT_COMPUTE,
+                                computePipelineLayout, 4, 1,
+                                &_descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::CULLED_IDR_COUNTER]][0],
+                                0,
+                                nullptr);
+        // thread group x,y,z
+        vkCmdDispatch(commandBufferHandle, (numMeshesToCull / 64) + 1, 1, 1);
+
+        const auto culledIDRBufferHandle = std::get<0>(_culledIndirectDrawBuffer);
+        const auto culledIDRBufferSizeInBytes = std::get<4>(_culledIndirectDrawBuffer);
+        const auto culledIDRCountBufferHandle = std::get<0>(_culledIndirectDrawCountBuffer);
+        const auto culledIDRCountBufferSizeInBytes = std::get<4>(_culledIndirectDrawCountBuffer);
+
+        // from shader write to idr buffer read
+        std::array<VkBufferMemoryBarrier, 2> bufferMemoryBarriers{
+            VkBufferMemoryBarrier{
+                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+                .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+                .dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT,
+                .srcQueueFamilyIndex = commandQueueFamilyIndex,
+                .dstQueueFamilyIndex = commandQueueFamilyIndex,
+                .buffer = culledIDRBufferHandle,
+                .size = culledIDRBufferSizeInBytes,
+            },
+            VkBufferMemoryBarrier{
+                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+                .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+                .dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT,
+                .srcQueueFamilyIndex = commandQueueFamilyIndex,
+                .dstQueueFamilyIndex = commandQueueFamilyIndex,
+                .buffer = culledIDRCountBufferHandle,
+                .size = culledIDRCountBufferSizeInBytes,
+            },
+        };
+
+        vkCmdPipelineBarrier(
+            commandBufferHandle,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+            0,
+            0, nullptr,                                                         // memory
+            (uint32_t)bufferMemoryBarriers.size(), bufferMemoryBarriers.data(), // buffer
+            0, nullptr                                                          // image
+        );
     }
 
 private:
@@ -125,12 +249,11 @@ private:
     {
         ASSERT(_ctx, "vk context should be defined");
         ASSERT(_scene, "scene should be defined");
-        std::vector<BoundingBox> bb;
-        bb.reserve(_scene->meshes.size());
+        _bb.reserve(_scene->meshes.size());
 
         for (const auto &mesh : _scene->meshes)
         {
-            bb.emplace_back(BoundingBox{
+            _bb.emplace_back(BoundingBox{
                 .center = glm::vec4(
                     mesh.center[COMPONENT::X],
                     mesh.center[COMPONENT::Y],
@@ -143,9 +266,13 @@ private:
                     1.0f)});
         }
         // build up the combo buffer
-        const auto bytesize = sizeof(BoundingBox) * bb.size();
-        _meshBoundBoxComboBuffer = _ctx->createDeviceLocalBuffer(
-            "Combo BoundingBox Buffer",
+        const auto bytesize = sizeof(BoundingBox) * _bb.size();
+        _meshBoundBoxComboStagingBuffer = _ctx->createStagingBuffer(
+            "Combo BoundingBox Staging Buffer",
+            bytesize);
+
+        _meshBoundBoxComboDeviceBuffer = _ctx->createDeviceLocalBuffer(
+            "Combo BoundingBox Device Local Buffer",
             bytesize,
             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT |
@@ -292,9 +419,9 @@ private:
         {
             const auto &dstSets = _descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::BOUNDING_BOX]];
             ASSERT(dstSets.size() == 1, "boundingbox descriptor set size is 1");
-            const auto bufferSizeInBytes = std::get<4>(_meshBoundBoxComboBuffer);
+            const auto bufferSizeInBytes = std::get<4>(_meshBoundBoxComboDeviceBuffer);
             _ctx->bindBufferToDescriptorSet(
-                std::get<0>(_meshBoundBoxComboBuffer),
+                std::get<0>(_meshBoundBoxComboDeviceBuffer),
                 0,
                 bufferSizeInBytes,
                 dstSets[0],
@@ -306,9 +433,9 @@ private:
         {
             const auto &dstSets = _descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::FUSTRUMS]];
             ASSERT(dstSets.size() == numFramesInFlight, "FUSTRUMS descriptor set size should equal # of frames in flight");
-            const auto& fustrumBuffers = std::get<0>(_fustrumBuffers);
+            const auto &fustrumBuffers = std::get<0>(_fustrumBuffers);
             ASSERT(fustrumBuffers.size() == numFramesInFlight, "fustrumBuffers' size should equal # of frames in flight");
-            
+
             for (size_t i = 0; i < numFramesInFlight; i++)
             {
                 const auto bufferSizeInBytes = std::get<4>(fustrumBuffers[i]);
@@ -351,6 +478,51 @@ private:
         }
     }
 
+    void uploadResource()
+    {
+        ASSERT(_ctx, "vk context should be defined");
+        auto logicalDevice = _ctx->getLogicDevice();
+        // this io belongs to the graphics queue, so no explict ownership acq and release needed
+        auto cmdBuffersForIO = _ctx->getCommandBufferForIO();
+        auto graphicsComputeQueue = _ctx->getGraphicsComputeQueue();
+        _ctx->BeginRecordCommandBuffer(cmdBuffersForIO);
+        _ctx->writeBuffer(
+            _meshBoundBoxComboStagingBuffer,
+            _meshBoundBoxComboDeviceBuffer,
+            cmdBuffersForIO,
+            reinterpret_cast<const void *>(_bb.data()),
+            _bb.size() * sizeof(BoundingBox),
+            0,
+            0);
+        _ctx->EndRecordCommandBuffer(cmdBuffersForIO);
+
+        const auto uploadCmdBuffer = std::get<1>(cmdBuffersForIO);
+        const auto uploadCmdBufferFence = std::get<2>(cmdBuffersForIO);
+
+        const VkPipelineStageFlags flags = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        // wait for no body
+        VkSubmitInfo submitInfo{};
+        submitInfo.waitSemaphoreCount = 0;
+        submitInfo.pWaitSemaphores = VK_NULL_HANDLE;
+        // only useful when having waitsemaphore
+        submitInfo.pWaitDstStageMask = &flags;
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &uploadCmdBuffer;
+        // no body needs to be notified
+        submitInfo.signalSemaphoreCount = 0;
+        submitInfo.pSignalSemaphores = VK_NULL_HANDLE;
+
+        VK_CHECK(vkResetFences(logicalDevice, 1, &uploadCmdBufferFence));
+        VK_CHECK(vkQueueSubmit(graphicsComputeQueue, 1, &submitInfo, uploadCmdBufferFence));
+        // sync io
+        const auto result = vkWaitForFences(logicalDevice, 1, &uploadCmdBufferFence, VK_TRUE,
+                                            100000000000);
+        if (result == VK_TIMEOUT)
+        {
+            vkDeviceWaitIdle(logicalDevice);
+        }
+    }
     // ownership be careful
     BufferEntity *_indirectDrawBuffer{nullptr};
     BufferEntity _culledIndirectDrawBuffer;
@@ -360,8 +532,10 @@ private:
     // refer to frame in fight
     std::tuple<std::vector<BufferEntity>, size_t> _fustrumBuffers;
     // interleave all the bounding box of meshes into one big buffer.
-    BufferEntity _meshBoundBoxComboBuffer;
-
+    BufferEntity _meshBoundBoxComboDeviceBuffer;
+    BufferEntity _meshBoundBoxComboStagingBuffer;
+    // life cycle of host buffer matters when gpu uploading process is done
+    std::vector<BoundingBox> _bb;
     // for pipeline and binding resource
     std::vector<VkDescriptorSetLayout> _descriptorSetLayouts;
     VkShaderModule _csShaderModule{VK_NULL_HANDLE};

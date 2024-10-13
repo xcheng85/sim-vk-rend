@@ -14,14 +14,9 @@
 #include <vector.h>
 #include <matrix.h>
 #include <fp.h>
+#include <misc.h>
 
 using namespace std;
-
-using Plane = glm::vec4;
-
-// using FustrumPlanes = Plane[6]; // function could not return array
-// benifits of std::array than old-style array
-using FustrumPlanes = std::array<Plane, 6>;
 
 class CameraBase
 {
@@ -68,7 +63,7 @@ public:
     {
         return _aspect;
     }
-    virtual FustrumPlanes fustrumPlanes() = 0;
+    virtual Fustrum fustrumPlanes() const= 0;
 
 protected:
     vec2f _prevMouseCoordsInNdc{-2.f};

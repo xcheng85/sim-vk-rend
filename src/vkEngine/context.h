@@ -242,7 +242,7 @@ public:
     VkInstance getInstance() const;
     VkDevice getLogicDevice() const;
     VmaAllocator getVmaAllocator() const;
-    VkQueue getGraphicsQueue() const;
+    VkQueue getGraphicsComputeQueue() const;
     VkQueue getPresentationQueue() const;
 
     VkPhysicalDevice getSelectedPhysicalDevice() const;

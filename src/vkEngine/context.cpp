@@ -237,9 +237,9 @@ public:
         return _instance;
     }
 
-    inline auto getGraphicsQueue() const
+    inline auto getGraphicsComputeQueue() const
     {
-        return _graphicsQueue;
+        return _graphicsComputeQueue;
     }
 
     inline auto getPresentationQueue() const
@@ -944,7 +944,7 @@ private:
 
     VkDevice _logicalDevice{VK_NULL_HANDLE};
 
-    VkQueue _graphicsQueue{VK_NULL_HANDLE};
+    VkQueue _graphicsComputeQueue{VK_NULL_HANDLE};
     VkQueue _computeQueue{VK_NULL_HANDLE};
     VkQueue _transferQueue{VK_NULL_HANDLE};
     VkQueue _presentationQueue{VK_NULL_HANDLE};
@@ -1117,7 +1117,7 @@ void VkContext::Impl::cacheCommandQueue()
 {
     // 0th queue of that queue family is graphics
     vkGetDeviceQueue(_logicalDevice, _graphicsComputeQueueFamilyIndex, _graphicsQueueIndex,
-                     &_graphicsQueue);
+                     &_graphicsComputeQueue);
     vkGetDeviceQueue(_logicalDevice, _computeQueueFamilyIndex, _computeQueueIndex, &_computeQueue);
 
     // Get transfer queue if present
@@ -1129,7 +1129,7 @@ void VkContext::Impl::cacheCommandQueue()
     // familyIndexSupportSurface
     vkGetDeviceQueue(_logicalDevice, _presentQueueFamilyIndex, 0, &_presentationQueue);
     vkGetDeviceQueue(_logicalDevice, _graphicsComputeQueueFamilyIndex, 0, &_sparseQueues);
-    ASSERT(_graphicsQueue, "Failed to access graphics queue");
+    ASSERT(_graphicsComputeQueue, "Failed to access graphics&compute queue");
     ASSERT(_computeQueue, "Failed to access compute queue");
     ASSERT(_transferQueue, "Failed to access transfer queue");
     ASSERT(_presentationQueue, "Failed to access presentation queue");
@@ -1467,7 +1467,7 @@ std::vector<CommandBufferEntity> VkContext::Impl::createGraphicsCommandBuffers(
 {
     return this->createCommandBuffers(name, count, inflightCount, flags,
                                       _graphicsComputeQueueFamilyIndex,
-                                      _graphicsQueue);
+                                      _graphicsComputeQueue);
 }
 
 std::vector<CommandBufferEntity> VkContext::Impl::createTransferCommandBuffers(
@@ -2389,7 +2389,7 @@ void VkContext::Impl::submitCommand()
     // vkWaitForFences and reset pattern
     VK_CHECK(vkResetFences(_logicalDevice, 1, &fenceToWait));
     // signal fence+
-    VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submitInfo, fenceToWait));
+    VK_CHECK(vkQueueSubmit(_graphicsComputeQueue, 1, &submitInfo, fenceToWait));
 }
 
 void VkContext::Impl::present(uint32_t swapChainImageIndex)
@@ -2709,9 +2709,9 @@ VmaAllocator VkContext::getVmaAllocator() const
     return _pimpl->getVmaAllocator();
 }
 
-VkQueue VkContext::getGraphicsQueue() const
+VkQueue VkContext::getGraphicsComputeQueue() const
 {
-    return _pimpl->getGraphicsQueue();
+    return _pimpl->getGraphicsComputeQueue();
 }
 
 VkQueue VkContext::getPresentationQueue() const

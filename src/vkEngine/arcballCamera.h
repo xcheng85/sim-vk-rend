@@ -31,12 +31,14 @@ public:
         const glm::vec3 &up,
         float nearPlaneD,
         float farPlaneD,
-        float verticalFov)
+        float verticalFov,
+        float aspect)
     {
         _eye = eye;
         _nearPlaneD = nearPlaneD;
         _farPlaneD = farPlaneD;
         _verticalFov = verticalFov;
+        _aspect = aspect;
         {
             const glm::vec3 dir = target - eye;
             glm::vec3 z_axis = glm::normalize(dir);
@@ -151,7 +153,7 @@ public:
     }
 
     // http://www.lighthouse3d.com/tutorials/view-frustum-culling/geometric-approach-extracting-the-planes/
-    virtual FustrumPlanes fustrumPlanes() override
+    virtual Fustrum fustrumPlanes() const override
     {
         // A couple more unit vectors are required,
         // namely the up vector and the right vector.
@@ -202,21 +204,21 @@ public:
 
         // create 6 planes
         // plane: normal vector + a point in the plane
-        FustrumPlanes planes;
+        Fustrum fustrum;
         // left plane(all left)
-        planes[0] = createPlaneFromPoints(bottomLeftInFarPlane, bottomLeftInNearPlane, upperLeftInFarPlane);
+        fustrum.planes[0] = createPlaneFromPoints(bottomLeftInFarPlane, bottomLeftInNearPlane, upperLeftInFarPlane);
         // bottom plane
-        planes[1] = createPlaneFromPoints(bottomLeftInFarPlane, bottomRightInFarPlane, bottomLeftInNearPlane);
+        fustrum.planes[1] = createPlaneFromPoints(bottomLeftInFarPlane, bottomRightInFarPlane, bottomLeftInNearPlane);
         // right plane
-        planes[2] = createPlaneFromPoints(bottomRightInFarPlane, bottomRightInNearPlane, upperRightInFarPlane);
+        fustrum.planes[2] = createPlaneFromPoints(bottomRightInFarPlane, bottomRightInNearPlane, upperRightInFarPlane);
         // upper plane
-        planes[3] = createPlaneFromPoints(upperLeftInFarPlane, upperRightInNearPlane, upperRightInFarPlane);
+        fustrum.planes[3] = createPlaneFromPoints(upperLeftInFarPlane, upperRightInNearPlane, upperRightInFarPlane);
         // near plane
-        planes[4] = createPlaneFromPoints(bottomRightInNearPlane, bottomLeftInNearPlane, upperRightInNearPlane);
+        fustrum.planes[4] = createPlaneFromPoints(bottomRightInNearPlane, bottomLeftInNearPlane, upperRightInNearPlane);
         // far plane
-        planes[5] = createPlaneFromPoints(bottomRightInFarPlane, bottomLeftInFarPlane, upperRightInFarPlane);
+        fustrum.planes[5] = createPlaneFromPoints(bottomRightInFarPlane, bottomLeftInFarPlane, upperRightInFarPlane);
 
-        return planes;
+        return fustrum;
     }
 
 private:

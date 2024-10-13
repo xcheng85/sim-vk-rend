@@ -149,7 +149,7 @@ void VkApplication::teardown()
 void VkApplication::renderPerFrame()
 {
     auto logicalDevice = _ctx.getLogicDevice();
-    auto graphicsQueue = _ctx.getGraphicsQueue();
+    auto graphicsQueue = _ctx.getGraphicsComputeQueue();
     auto presentationQueue = _ctx.getPresentationQueue();
     auto swapChain = _ctx.getSwapChain();
 
@@ -161,6 +161,10 @@ void VkApplication::renderPerFrame()
     // VK_CHECK(vkResetCommandBuffer(cmdToRecord, 0));
     _ctx.BeginRecordCommandBuffer(cmdBuffersForRendering);
 
+    // 1. cull fustrum compute shader pass
+    _cullFustrum->execute(cmdBuffersForRendering, currentFrameId);
+
+    // 2. main rendering pass
     const auto cmdToRecord = std::get<1>(cmdBuffersForRendering);
     const auto fenceToWait = std::get<2>(cmdBuffersForRendering);
 
@@ -612,8 +616,19 @@ void VkApplication::recordCommandBuffer(
                             0, nullptr);
     vkCmdBindIndexBuffer(commandBuffer, std::get<0>(_compositeIB), 0, VK_INDEX_TYPE_UINT32);
     // how many draws are dependent on how many meshes in the scene.
-    vkCmdDrawIndexedIndirect(commandBuffer, std::get<0>(_indirectDrawB), 0, _numMeshes,
-                             sizeof(IndirectDrawForVulkan));
+    // without fustrum culling
+    // vkCmdDrawIndexedIndirect(commandBuffer, std::get<0>(_indirectDrawB), 0, _numMeshes,
+    //                          sizeof(IndirectDrawForVulkan));
+
+    // with gpu culling pass
+    const auto culledIDRHandle = std::get<0>(this->_cullFustrum->getCulledIDR());
+    const auto culledIDRCountHandle = std::get<0>(this->_cullFustrum->getCulledIDRCount());
+    vkCmdDrawIndexedIndirectCount(
+        commandBuffer, 
+        culledIDRHandle, 0,
+        culledIDRCountHandle, 0, 
+        _numMeshes, sizeof(IndirectDrawForVulkan));
+
     vkCmdEndRenderPass(commandBuffer);
 }
 
@@ -652,7 +667,7 @@ void VkApplication::preHostDeviceIO()
 void VkApplication::postHostDeviceIO()
 {
     auto logicalDevice = _ctx.getLogicDevice();
-    auto graphicsQueue = _ctx.getGraphicsQueue();
+    auto graphicsQueue = _ctx.getGraphicsComputeQueue();
     auto vmaAllocator = _ctx.getVmaAllocator();
 
     auto cmdBuffersForIO = _ctx.getCommandBufferForIO();

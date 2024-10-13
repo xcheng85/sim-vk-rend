@@ -196,6 +196,13 @@ struct Fustrum
 {
     static constexpr uint32_t sNumPlanes{6};
     alignas(16) glm::vec4 planes[sNumPlanes];
+
+    Fustrum& operator=(const Fustrum& other) {
+        for(int i = 0; i < sNumPlanes; ++i) {
+            planes[i] = other.planes[i];
+        }
+        return *this;
+    }
 };
 
 inline glm::vec3 calculatePlaneNormal(const glm::vec3 &p1, const glm::vec3 &p2, const glm::vec3 &p3)

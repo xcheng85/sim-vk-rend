@@ -29,3 +29,9 @@ vkCmdPushConstants
 specialization constants: are set before pipeline creation meaning these values are known during shader compilation,
 
 push constant: update at runtime (after shader compilation)
+
+### barrier between compute queue and graphcis queue
+
+### pipeine, ds and resource
+1. bind resource to ds
+2. bind ds to the pipeline for shader to access

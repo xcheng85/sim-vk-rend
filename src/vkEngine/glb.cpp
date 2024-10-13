@@ -384,8 +384,8 @@ void readMeshes(const Microsoft::glTF::Document &document,
             firstIndex += currMesh.indices.size();
             vertexOffset += currMesh.vertices.size();
 
-            currMesh.extents = (currMesh.maxAABB - currMesh.minAABB) * 0.5f;
-            currMesh.center = currMesh.minAABB + currMesh.extents;
+            currMesh.extents = (currMesh.maxAABB - currMesh.minAABB);
+            currMesh.center = currMesh.minAABB + currMesh.extents * 0.5f;
 
             log(Level::Info,
                 "Extents:", currMesh.extents[COMPONENT::X],

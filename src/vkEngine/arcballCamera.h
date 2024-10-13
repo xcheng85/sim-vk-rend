@@ -184,8 +184,10 @@ public:
         const auto halfUpVectorForFarPlane = halfHeightForFarPlane * up;
         const auto halfRightVectorForFarPlane = _aspect * halfUpVectorForFarPlane;
 
-        const auto eyeMappingToNearPlane = _eye + forward * _nearPlaneD;
-        const auto eyeMappingToFarPlane = _eye + forward * _farPlaneD;
+        log(Level::Info, "camera viewPos: ", viewPos());
+
+        const auto eyeMappingToNearPlane = viewPos() + forward * _nearPlaneD;
+        const auto eyeMappingToFarPlane = viewPos() + forward * _farPlaneD;
 
         // eight corners of fustrum
         // Upper: +

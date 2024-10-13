@@ -1,5 +1,9 @@
 #pragma once
 
+// #define GLM_SWIZZLE // for xyz Swizzle Operators
+// #define GLM_SWIZZLE_XYZW
+// #define GLM_SWIZZLE_STQP
+
 #include <glm/ext.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
@@ -209,6 +213,27 @@ public:
             (uint32_t)bufferMemoryBarriers.size(), bufferMemoryBarriers.data(), // buffer
             0, nullptr                                                          // image
         );
+
+        // cpu testing
+        for (const auto &bb : _bb)
+        {
+            for (int i = 0; i < 1; ++i)
+            {
+                const auto p = frustrum.planes[i];
+                glm::vec3 n(p);
+                glm::vec3 extents(bb.extents[COMPONENT::X], bb.extents[COMPONENT::Y],
+                                  bb.extents[COMPONENT::Z]);
+                glm::vec3 center(bb.center[COMPONENT::X], bb.center[COMPONENT::Y],
+                                 bb.center[COMPONENT::Z]);
+                float radiusEffective = 0.5 * glm::dot(glm::abs(n), extents * 0.5f);
+                float distFromCenter = glm::dot(center, n) + p.w;
+                const bool shouldBeCulled = (distFromCenter <= -radiusEffective);
+
+                if (shouldBeCulled) {
+                    log(Level::Info, "shouldBeCulled: ", shouldBeCulled);
+                }
+            }
+        }
     }
 
 private:
@@ -253,6 +278,7 @@ private:
 
         for (const auto &mesh : _scene->meshes)
         {
+
             _bb.emplace_back(BoundingBox{
                 .center = glm::vec4(
                     mesh.center[COMPONENT::X],
@@ -264,6 +290,9 @@ private:
                     mesh.extents[COMPONENT::Y],
                     mesh.extents[COMPONENT::Z],
                     1.0f)});
+
+            log(Level::Info, "BoundingBox Center: ", _bb.back().center);
+            log(Level::Info, "BoundingBox Extents: ", _bb.back().extents);
         }
         // build up the combo buffer
         const auto bytesize = sizeof(BoundingBox) * _bb.size();

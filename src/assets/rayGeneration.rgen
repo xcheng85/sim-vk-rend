@@ -1,0 +1,54 @@
+#version 460
+#extension GL_EXT_ray_tracing : enable
+#extension GL_GOOGLE_include_directive : require
+
+// input
+layout(set = 0, binding = 0) uniform accelerationStructureEXT as;
+// write to
+layout(set = 0, binding = 1, rgba8 ) uniform image2D image;
+// input
+layout(set = 0, binding = 2) uniform CameraProperties 
+{
+	mat4 viewInverse;
+	mat4 projInverse;
+} cam;
+
+// the caller can select one of its payloads to be made visible to the callee shader as its rayPayloadInEXT variable 
+// (also known as the “incoming payload”).
+layout(location = 0) rayPayloadEXT vec3 hitValue;
+
+void main() 
+{
+	const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
+	const vec2 inUV = pixelCenter/vec2(gl_LaunchSizeEXT.xy);
+    // [-1, 1]
+	vec2 d = inUV * 2.0 - 1.0;
+
+	vec4 origin = cam.viewInverse * vec4(0,0,0,1);
+    // screen to camera
+	vec4 target = cam.projInverse * vec4(d.x, d.y, 1, 1) ;
+    // camera to world
+	vec4 direction = cam.viewInverse * vec4(normalize(target.xyz), 0) ;
+
+	float tmin = 0.001;
+	float tmax = 10000.0;
+
+    hitValue = vec3(0.0);
+
+    // https://github.com/KhronosGroup/GLSL/blob/main/extensions/ext/GLSL_EXT_ray_tracing.txt
+    // gl_RayFlagsOpaqueEXT flag, which means “there is no transparency”
+    // An 8-bit ray mask
+    // sbt_offset: 0
+    // sbt_stride: 0
+    // miss_index: 0
+    // camera origion
+    // tmin
+    // ray direction
+    // tmax to terminate
+    // payload location index payload (location = 0)
+
+    traceRayEXT(as, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, 
+        origin.xyz, tmin, direction.xyz, tmax, 0);
+
+	imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitValue, 0.0));
+}

@@ -71,6 +71,13 @@ void VkApplication::init()
     _cullFustrum->setDescriptorPool(this->_descriptorSetPool);
     _cullFustrum->finalizeInit();
 
+    _rt = std::make_unique<RayTracing>();
+    _rt->setContext(&this->_ctx);
+    _rt->setCamera(&this->_camera);
+    _rt->setScene(_scene);
+    _rt->setDescriptorPool(this->_descriptorSetPool);
+    _rt->finalizeInit();
+
     createGraphicsPipeline();
     createSwapChainFramebuffers();
     // createPerFrameSyncObjects();
@@ -624,9 +631,9 @@ void VkApplication::recordCommandBuffer(
     const auto culledIDRHandle = std::get<0>(this->_cullFustrum->getCulledIDR());
     const auto culledIDRCountHandle = std::get<0>(this->_cullFustrum->getCulledIDRCount());
     vkCmdDrawIndexedIndirectCount(
-        commandBuffer, 
+        commandBuffer,
         culledIDRHandle, 0,
-        culledIDRCountHandle, 0, 
+        culledIDRCountHandle, 0,
         _numMeshes, sizeof(IndirectDrawForVulkan));
 
     vkCmdEndRenderPass(commandBuffer);

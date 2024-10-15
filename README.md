@@ -35,3 +35,28 @@ push constant: update at runtime (after shader compilation)
 ### pipeine, ds and resource
 1. bind resource to ds
 2. bind ds to the pipeline for shader to access
+
+## Ray tracing
+### device extensions
+        VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, // ray_tracing_present        VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME, // for ray tracing
+        VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME, // for ray tracing
+        VK_KHR_RAY_QUERY_EXTENSION_NAME,                // ray query needed for raytracing
+### enable the feature for logic device 
+        sAccelStructFeatures.accelerationStructure = VK_TRUE;
+        sRayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
+        sRayQueryFeatures.rayQuery = VK_TRUE;
+
+### sbt (shader binding table)
+
+### BLAS 
+mesh
+
+### TLAS
+instancing
+
+### camera properties
+viewInverse
+prjInverse
+
+## dynamicRendering
+renderPass updates

@@ -59,11 +59,11 @@ void cullMeshAgainstFustrum(uint gMeshId) {
   bool shouldBeCulled = false;
   for (uint i = 0; i < numFustrumPlanes; ++i) {
     vec3 planeNormal = frustumPlanes[i].xyz;
-    float radiusEffective = 0.5 * dot(abs(planeNormal), bb.extents.xyz);
+    float radiusEffective = 0.5 * dot(abs(planeNormal), 0.5 * bb.extents.xyz);
     // 4D dot product: L.Q
     float distFromCenter = dot(bb.center.xyz, planeNormal) + frustumPlanes[i].w;
     if (distFromCenter <= -radiusEffective) {
-      shouldBeCulled = true;
+      shouldBeCulled = false;
     }
   }
   if (!shouldBeCulled) {

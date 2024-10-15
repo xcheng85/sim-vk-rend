@@ -48,6 +48,7 @@
 #include <future> //packaged_task<>
 
 #include <cullFustrum.h>
+#include <rayTracing.h>
 
 #if defined(__ANDROID__)
 // functor for custom deleter for unique_ptr
@@ -223,4 +224,5 @@ private:
     // compare CullFustrum _cullFustrum, cannot compile due to ctor restriction
     // benifits of unique_ptr
     std::unique_ptr<CullFustrum> _cullFustrum;
+    std::unique_ptr<RayTracing> _rt;
 };

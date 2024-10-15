@@ -183,9 +183,7 @@ public:
 
         const auto halfUpVectorForFarPlane = halfHeightForFarPlane * up;
         const auto halfRightVectorForFarPlane = _aspect * halfUpVectorForFarPlane;
-
-        log(Level::Info, "camera viewPos: ", viewPos());
-
+        // _eye is obsolete
         const auto eyeMappingToNearPlane = viewPos() + forward * _nearPlaneD;
         const auto eyeMappingToFarPlane = viewPos() + forward * _farPlaneD;
 

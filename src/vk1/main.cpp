@@ -178,9 +178,9 @@ int main(int argc, char **argv)
         glm::vec3(0.0038983f, -0.142875f, 0.6f),        // pos
         glm::vec3(0.00238983f, -0.142875f, 0.1381729f), // target -z
         glm::vec3(0.0f, 1.f, 0.f),                      // initial world up
-        0.1f,
-        500.f,
-        65.0f,
+        0.01f,
+        4000.f,
+        60.f,
         1280.0/720.0
     };
 

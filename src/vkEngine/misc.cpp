@@ -65,6 +65,18 @@ EShLanguage shaderStageFromFileName(const std::filesystem::path &path)
     {
         return EShLangCompute;
     }
+    else if (ext == ".rgen")
+    {
+        return EShLangRayGen;
+    }
+    else if (ext == ".rmiss")
+    {
+        return EShLangMiss;
+    }
+    else if (ext == ".rchit")
+    {
+        return EShLangClosestHit;
+    }
     else
     {
         ASSERT(false, "unsupported shader stage");

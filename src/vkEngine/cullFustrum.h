@@ -225,7 +225,7 @@ public:
                                   bb.extents[COMPONENT::Z]);
                 glm::vec3 center(bb.center[COMPONENT::X], bb.center[COMPONENT::Y],
                                  bb.center[COMPONENT::Z]);
-                float radiusEffective = 0.5 * glm::dot(glm::abs(n), extents * 0.5f);
+                float radiusEffective = 0.5 * glm::dot(glm::abs(n), extents);
                 float distFromCenter = glm::dot(center, n) + p.w;
                 const bool shouldBeCulled = (distFromCenter <= -radiusEffective);
 

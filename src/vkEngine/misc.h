@@ -99,6 +99,12 @@ struct SpecializationDataDef1
     uint32_t lightingModel{0};
 };
 
+struct UniformCameraProp
+{
+    glm::mat4 viewInverse;
+    glm::mat4 projInverse;
+};
+
 //// mimic vao in opengl
 // struct VAO {
 //     VkBuffer vertexBuffer;
@@ -157,6 +163,10 @@ private:
 };
 
 std::vector<char> readFile(const std::string &filePath, bool isBinary = true);
+inline uint32_t alignedSize(uint32_t value, uint32_t alignment)
+{
+    return (value + alignment - 1) & ~(alignment - 1);
+}
 
 VkShaderModule createShaderModule(
     VkDevice logicalDevice,
@@ -164,8 +174,8 @@ VkShaderModule createShaderModule(
     const std::string &entryPoint,
     const std::string &correlationId);
 
-
 std::vector<VkPipelineShaderStageCreateInfo> gatherPipelineShaderStageCreateInfos(const std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, const char *, const VkSpecializationInfo *>> &shaderModuleEntities);
+uint32_t findShaderStageIndex(const std::vector<VkPipelineShaderStageCreateInfo> &shaderStages, const VkShaderModule shaderModule);
 
 template <typename T>
 void setCorrlationId(T handle, VkDevice logicalDevice, VkObjectType type, const std::string &name)
@@ -197,8 +207,10 @@ struct Fustrum
     static constexpr uint32_t sNumPlanes{6};
     alignas(16) glm::vec4 planes[sNumPlanes];
 
-    Fustrum& operator=(const Fustrum& other) {
-        for(int i = 0; i < sNumPlanes; ++i) {
+    Fustrum &operator=(const Fustrum &other)
+    {
+        for (int i = 0; i < sNumPlanes; ++i)
+        {
             planes[i] = other.planes[i];
         }
         return *this;

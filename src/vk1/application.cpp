@@ -252,10 +252,15 @@ void VkApplication::createDescriptorSetLayout()
 // depends on your glsl
 void VkApplication::createDescriptorPool()
 {
-    _descriptorSetPool = _ctx.createDescriptorSetPool({{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, MAX_FRAMES_IN_FLIGHT},
-                                                       {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10},
-                                                       {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 10},
-                                                       {VK_DESCRIPTOR_TYPE_SAMPLER, 10}},
+    // for ray tracing
+    _descriptorSetPool = _ctx.createDescriptorSetPool({
+                                                          {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, MAX_FRAMES_IN_FLIGHT},
+                                                          {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10},
+                                                          {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 10},
+                                                          {VK_DESCRIPTOR_TYPE_SAMPLER, 10},
+                                                          {VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 10},
+                                                          {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 10},
+                                                      },
                                                       100);
     // const auto logicalDevice = _ctx.getLogicDevice();
     // // here I need 4 type of descriptors

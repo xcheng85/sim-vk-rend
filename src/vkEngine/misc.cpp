@@ -257,6 +257,23 @@ std::vector<VkPipelineShaderStageCreateInfo> gatherPipelineShaderStageCreateInfo
     return shaderStages;
 }
 
+// for shader group mapping which is required when creating rt pipeine
+uint32_t findShaderStageIndex(
+    const std::vector<VkPipelineShaderStageCreateInfo> &shaderStages, 
+    const VkShaderModule shaderModule)
+{
+    if (auto it = std::find_if(std::begin(shaderStages), std::end(shaderStages), [=](const VkPipelineShaderStageCreateInfo& shaderStage){
+        return shaderModule == shaderStage.module;
+    }); it != std::end(shaderStages))
+    {
+        return it - std::begin(shaderStages);
+    }
+    else
+    {
+        return -1;
+    }
+}
+
 VkImageViewType getImageViewType(VkImageType imageType)
 {
     switch (imageType)

@@ -217,12 +217,12 @@ int main(int argc, char **argv)
         VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME, // fragment_shading_rate_present
         VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME,
         VK_KHR_MAINTENANCE2_EXTENSION_NAME,
-        VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, // ray_tracing_present
+        VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, // providing ray tracing shader stages and pipelines
         VK_KHR_SPIRV_1_4_EXTENSION_NAME,
-        VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME, // for ray tracing
+        VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME, // for ray tracing: which provides functionality for acceleration structure building and management
         VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
         VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME, // for ray tracing
-        VK_KHR_RAY_QUERY_EXTENSION_NAME,                // ray query needed for raytracing
+        VK_KHR_RAY_QUERY_EXTENSION_NAME, // providing ray query intrinsics for all shader stages
         VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME,
         VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
     };

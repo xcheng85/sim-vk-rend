@@ -5,9 +5,9 @@
 // input
 layout(set = 0, binding = 0) uniform accelerationStructureEXT as;
 // write to
-layout(set = 0, binding = 1, rgba8 ) uniform image2D image;
+layout(set = 1, binding = 0, rgba8) uniform image2D image;
 // input
-layout(set = 0, binding = 2) uniform CameraProperties 
+layout(set = 2, binding = 0) uniform CameraProperties 
 {
 	mat4 viewInverse;
 	mat4 projInverse;

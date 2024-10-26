@@ -139,6 +139,13 @@ public:
         VkDeviceSize bufferSizeInBytes,
         VkBufferUsageFlags bufferUsageFlag);
 
+    std::tuple<BufferEntity, VkStridedDeviceAddressRegionKHR> createShaderBindTableBuffer(
+        const std::string &name,
+        VkDeviceSize bufferSizeInBytes,
+        VkDeviceSize alignedBufferSizeInBytes,
+        VkDeviceSize alignedStrideSizeInBytes,
+        bool mapping);
+
     ImageEntity createImage(
         const std::string &name,
         VkImageType imageType,
@@ -166,6 +173,11 @@ public:
         const VkRenderPass &renderPass);
 
     std::tuple<VkPipeline, VkPipelineLayout> createComputePipeline(
+        const std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, const char *, const VkSpecializationInfo *>> &shaderModuleEntities,
+        const std::vector<VkDescriptorSetLayout> &dsLayouts,
+        const std::vector<VkPushConstantRange> &pushConstants);
+
+    std::tuple<VkPipeline, VkPipelineLayout, std::vector<VkRayTracingShaderGroupCreateInfoKHR>> createRayTracingPipeline(
         const std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, const char *, const VkSpecializationInfo *>> &shaderModuleEntities,
         const std::vector<VkDescriptorSetLayout> &dsLayouts,
         const std::vector<VkPushConstantRange> &pushConstants);
@@ -256,6 +268,11 @@ public:
     inline auto getSelectedPhysicalDeviceProp() const
     {
         return _physicalDevicesProp1;
+    }
+
+    inline auto getSelectedPhysicalDeviceRayTracingProperties() const
+    {
+        return _rtPipelineProperties;
     }
 
     inline auto getSurfaceKHR() const
@@ -649,13 +666,14 @@ private:
             // If the VkPhysicalDeviceSubgroupProperties structure is included in the pNext chain of the VkPhysicalDeviceProperties2 structure passed to vkGetPhysicalDeviceProperties2,
             // it is filled in with each corresponding implementation-dependent property.
             // linked-list
-            VkPhysicalDeviceSubgroupProperties subgroupProp{
-                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES};
-            subgroupProp.pNext = NULL;
-            VkPhysicalDeviceProperties2 physicalDevicesProp{
-                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
-            physicalDevicesProp.pNext = &subgroupProp;
-            vkGetPhysicalDeviceProperties2(_selectedPhysicalDevice, &physicalDevicesProp);
+            // VkPhysicalDeviceSubgroupProperties subgroupProp{
+            //     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES};
+            // subgroupProp.pNext = NULL;
+            // VkPhysicalDeviceProperties2 physicalDevicesProp{
+            //     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+            // physicalDevicesProp.pNext = &subgroupProp;
+
+            vkGetPhysicalDeviceProperties2(_selectedPhysicalDevice, &_physicalDevicesProp2);
 
             // Get memory properties
             VkPhysicalDeviceMemoryProperties2 memoryProperties_ = {
@@ -855,7 +873,24 @@ private:
     VkDebugUtilsMessengerEXT _debugMessenger;
 
     VkPhysicalDevice _selectedPhysicalDevice{VK_NULL_HANDLE};
+    // v1 physical device
     VkPhysicalDeviceProperties _physicalDevicesProp1;
+
+    // v2 physical device support numerous exts (chain together for queries)
+    VkPhysicalDeviceSubgroupProperties _subgroupProp{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES,
+        .pNext = nullptr,
+    };
+
+    VkPhysicalDeviceRayTracingPipelinePropertiesKHR _rtPipelineProperties{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR,
+        .pNext = &_subgroupProp,
+    };
+    VkPhysicalDeviceProperties2 _physicalDevicesProp2 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+        .pNext = &_rtPipelineProperties,
+    };
+
     // physical device features
     bool _bindlessSupported{false};
     bool _protectedMemory{false};
@@ -993,6 +1028,9 @@ void VkContext::Impl::selectFeatures()
     sEnable12Features.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;
     sEnable12Features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
     sEnable12Features.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
+    // vkCreateDescriptorSetLayout(): pCreateInfo->pNext<VkDescriptorSetLayoutBindingFlagsCreateInfo>.pBindingFlags[0] includes VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT 
+    // but pBindings[0].descriptorType is VK_DESCRIPTOR_TYPE_STORAGE_IMAGE but descriptorBindingStorageImageUpdateAfterBind was not enabled
+    sEnable12Features.descriptorBindingStorageImageUpdateAfterBind = VK_TRUE;
     sEnable12Features.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
     sEnable12Features.descriptorBindingPartiallyBound = VK_TRUE;
     sEnable12Features.descriptorBindingVariableDescriptorCount = VK_TRUE;
@@ -1018,6 +1056,11 @@ void VkContext::Impl::selectFeatures()
     if (checkRayTracingSupport())
     {
         sAccelStructFeatures.accelerationStructure = VK_TRUE;
+        // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceAccelerationStructureFeaturesKHR.html
+        // //     constexpr VkDescriptorBindingFlags flagsToEnable = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+        //                                                VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
+        //                                                VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+        sAccelStructFeatures.descriptorBindingAccelerationStructureUpdateAfterBind = VK_TRUE;
         sRayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
         sRayQueryFeatures.rayQuery = VK_TRUE;
         _featureChain.push(sAccelStructFeatures);
@@ -1654,6 +1697,38 @@ BufferEntity VkContext::Impl::createDeviceLocalBuffer(
         VMA_MEMORY_USAGE_GPU_ONLY);
 }
 
+std::tuple<BufferEntity, VkStridedDeviceAddressRegionKHR> VkContext::Impl::createShaderBindTableBuffer(
+    const std::string &name,
+    VkDeviceSize bufferSizeInBytes,
+    VkDeviceSize alignedBufferSizeInBytes,
+    VkDeviceSize alignedStrideSizeInBytes,
+    bool mapping)
+{
+    BufferEntity entity = createBuffer(
+        name,
+        bufferSizeInBytes,
+        VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR |
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VK_SHARING_MODE_EXCLUSIVE,
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+        VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+        VMA_MEMORY_USAGE_CPU_ONLY,
+        mapping);
+
+    auto bufferHandle = std::get<0>(entity);
+    VkBufferDeviceAddressInfoKHR bufferDeviceAI{};
+    bufferDeviceAI.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    bufferDeviceAI.buffer = bufferHandle;
+
+    VkStridedDeviceAddressRegionKHR sbtAddressRegion;
+    sbtAddressRegion.deviceAddress = vkGetBufferDeviceAddressKHR(_logicalDevice, &bufferDeviceAI);
+    sbtAddressRegion.stride = alignedStrideSizeInBytes;
+    sbtAddressRegion.size = alignedBufferSizeInBytes;
+
+    return make_tuple(entity, sbtAddressRegion);
+}
+
 ImageEntity VkContext::Impl::createImage(
     const std::string &name,
     VkImageType imageType,
@@ -2009,6 +2084,91 @@ std::tuple<VkPipeline, VkPipelineLayout> VkContext::Impl::createComputePipeline(
 
     VK_CHECK(vkCreateComputePipelines(_logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &computePipeline));
     return make_tuple(computePipeline, pipelineLayout);
+}
+
+// only need shader stage and pipelinelayout
+// refer to: https://www.khronos.org/blog/ray-tracing-in-vulkan
+// 1. using contemporary proprietary APIs, such as NVIDIA OptiX™ or Microsoft DirectX Raytracing, to be easily portable to Vulkan
+std::tuple<VkPipeline, VkPipelineLayout, std::vector<VkRayTracingShaderGroupCreateInfoKHR>> VkContext::Impl::createRayTracingPipeline(
+    const std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, const char *, const VkSpecializationInfo *>> &shaderModuleEntities,
+    const std::vector<VkDescriptorSetLayout> &dsLayouts,
+    const std::vector<VkPushConstantRange> &pushConstants)
+{
+    std::tuple<VkPipeline, VkPipelineLayout> res;
+    VkPipelineLayout pipelineLayout;
+    VkPipeline rtPipeline;
+    std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups;
+
+    // shader stages
+    std::vector<VkPipelineShaderStageCreateInfo> shaderStages = gatherPipelineShaderStageCreateInfos(shaderModuleEntities);
+    // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkRayTracingShaderGroupCreateInfoKHR
+    // shader group: mapping of shader modules to its designated pipeline stages.
+    // rt pipeline needs: shader stages and shader group (mapping)
+    shaderGroups.reserve(shaderStages.size());
+
+    // Ray generation group
+    {
+        ASSERT(shaderModuleEntities.count(VK_SHADER_STAGE_RAYGEN_BIT_KHR) == 1,
+               "VK_SHADER_STAGE_RAYGEN_BIT_KHR must exist");
+        const auto shaderModule = std::get<0>(shaderModuleEntities.at(VK_SHADER_STAGE_RAYGEN_BIT_KHR));
+        const auto idx = findShaderStageIndex(shaderStages, shaderModule);
+        ASSERT(idx >= 0, "VK_SHADER_STAGE_RAYGEN_BIT_KHR shader stage must exist");
+        shaderGroups.push_back({.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
+                                .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
+                                .generalShader = idx,
+                                .closestHitShader = VK_SHADER_UNUSED_KHR,
+                                .anyHitShader = VK_SHADER_UNUSED_KHR,
+                                .intersectionShader = VK_SHADER_UNUSED_KHR});
+    }
+    // Ray Miss group
+    {
+        ASSERT(shaderModuleEntities.count(VK_SHADER_STAGE_MISS_BIT_KHR) == 1,
+               "VK_SHADER_STAGE_MISS_BIT_KHR must exist");
+        const auto shaderModule = std::get<0>(shaderModuleEntities.at(VK_SHADER_STAGE_MISS_BIT_KHR));
+        const auto idx = findShaderStageIndex(shaderStages, shaderModule);
+        ASSERT(idx >= 0, "VK_SHADER_STAGE_MISS_BIT_KHR shader stage must exist");
+        shaderGroups.push_back({.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
+                                .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
+                                .generalShader = idx,
+                                .closestHitShader = VK_SHADER_UNUSED_KHR,
+                                .anyHitShader = VK_SHADER_UNUSED_KHR,
+                                .intersectionShader = VK_SHADER_UNUSED_KHR});
+    }
+    // Closeast hit
+    {
+        ASSERT(shaderModuleEntities.count(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR) == 1,
+               "VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR must exist");
+        const auto shaderModule = std::get<0>(shaderModuleEntities.at(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR));
+        const auto idx = findShaderStageIndex(shaderStages, shaderModule);
+        ASSERT(idx >= 0, "VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR shader stage must exist");
+        shaderGroups.push_back({.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
+                                .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR,
+                                .generalShader = VK_SHADER_UNUSED_KHR,
+                                .closestHitShader = idx,
+                                .anyHitShader = VK_SHADER_UNUSED_KHR,
+                                .intersectionShader = VK_SHADER_UNUSED_KHR});
+    }
+
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    // multiple set layouts binded to the graphics pipeline
+    pipelineLayoutInfo.setLayoutCount = (uint32_t)dsLayouts.size();
+    pipelineLayoutInfo.pSetLayouts = dsLayouts.data();
+    pipelineLayoutInfo.pushConstantRangeCount = pushConstants.size();
+    pipelineLayoutInfo.pPushConstantRanges = pushConstants.data();
+    VK_CHECK(vkCreatePipelineLayout(_logicalDevice, &pipelineLayoutInfo, nullptr, &pipelineLayout));
+
+    VkRayTracingPipelineCreateInfoKHR rayTracingPipelineCI{};
+    rayTracingPipelineCI.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
+    rayTracingPipelineCI.stageCount = static_cast<uint32_t>(shaderStages.size());
+    rayTracingPipelineCI.pStages = shaderStages.data();
+    rayTracingPipelineCI.groupCount = static_cast<uint32_t>(shaderGroups.size());
+    rayTracingPipelineCI.pGroups = shaderGroups.data();
+    rayTracingPipelineCI.maxPipelineRayRecursionDepth = 1;
+    rayTracingPipelineCI.layout = pipelineLayout;
+
+    VK_CHECK(vkCreateRayTracingPipelinesKHR(_logicalDevice, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &rayTracingPipelineCI, nullptr, &rtPipeline));
+    return make_tuple(rtPipeline, pipelineLayout, shaderGroups);
 }
 
 std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> VkContext::Impl::allocateDescriptorSet(
@@ -2561,6 +2721,16 @@ BufferEntity VkContext::createDeviceLocalBuffer(
     return _pimpl->createDeviceLocalBuffer(name, bufferSizeInBytes, bufferUsageFlag);
 }
 
+std::tuple<BufferEntity, VkStridedDeviceAddressRegionKHR> VkContext::createShaderBindTableBuffer(
+    const std::string &name,
+    VkDeviceSize bufferSizeInBytes,
+    VkDeviceSize alignedBufferSizeInBytes,
+    VkDeviceSize alignedStrideSizeInBytes,
+    bool mapping)
+{
+    return _pimpl->createShaderBindTableBuffer(name, bufferSizeInBytes, alignedBufferSizeInBytes, alignedStrideSizeInBytes, mapping);
+}
+
 ImageEntity VkContext::createImage(
     const std::string &name,
     VkImageType imageType,
@@ -2614,6 +2784,18 @@ std::tuple<VkPipeline, VkPipelineLayout> VkContext::createComputePipeline(
     const std::vector<VkPushConstantRange> &pushConstants)
 {
     return _pimpl->createComputePipeline(vsShaderEntities, dsLayouts, pushConstants);
+}
+
+std::tuple<VkPipeline, VkPipelineLayout, std::vector<VkRayTracingShaderGroupCreateInfoKHR>> VkContext::createRayTracingPipeline(
+    std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule,
+                                                         const char *,
+                                                         // std::string, /** dangling pointer issues */
+                                                         const VkSpecializationInfo *>>
+        vsShaderEntities,
+    const std::vector<VkDescriptorSetLayout> &dsLayouts,
+    const std::vector<VkPushConstantRange> &pushConstants)
+{
+    return _pimpl->createRayTracingPipeline(vsShaderEntities, dsLayouts, pushConstants);
 }
 
 std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> VkContext::allocateDescriptorSet(
@@ -2727,6 +2909,11 @@ VkPhysicalDevice VkContext::getSelectedPhysicalDevice() const
 VkPhysicalDeviceProperties VkContext::getSelectedPhysicalDeviceProp() const
 {
     return _pimpl->getSelectedPhysicalDeviceProp();
+}
+
+VkPhysicalDeviceRayTracingPipelinePropertiesKHR VkContext::getSelectedPhysicalDeviceRayTracingProperties() const
+{
+    return _pimpl->getSelectedPhysicalDeviceRayTracingProperties();
 }
 
 VkSurfaceKHR VkContext::getSurfaceKHR() const

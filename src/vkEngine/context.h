@@ -154,6 +154,14 @@ public:
         VkDeviceSize bufferSizeInBytes,
         VkBufferUsageFlags bufferUsageFlag);
 
+    // buffer specially for SBT
+    std::tuple<BufferEntity, VkStridedDeviceAddressRegionKHR> createShaderBindTableBuffer(
+        const std::string &name,
+        VkDeviceSize bufferSizeInBytes, // not consider alignment
+        VkDeviceSize alignedBufferSizeInBytes, // consider alignment
+        VkDeviceSize alignedStrideSizeInBytes, // in case of multiple ray miss stages, considering aligneded bytes
+        bool mapping);
+
     ImageEntity createImage(
         const std::string &name,
         VkImageType imageType,
@@ -186,6 +194,15 @@ public:
         const VkRenderPass &renderPass);
 
     std::tuple<VkPipeline, VkPipelineLayout> createComputePipeline(
+        std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule,
+                                                             const char *,
+                                                             // std::string, /** dangling pointer issues */
+                                                             const VkSpecializationInfo *>>
+            vsShaderEntities,
+        const std::vector<VkDescriptorSetLayout> &dsLayouts,
+        const std::vector<VkPushConstantRange> &pushConstants);
+
+    std::tuple<VkPipeline, VkPipelineLayout, std::vector<VkRayTracingShaderGroupCreateInfoKHR>> createRayTracingPipeline(
         std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule,
                                                              const char *,
                                                              // std::string, /** dangling pointer issues */
@@ -247,6 +264,7 @@ public:
 
     VkPhysicalDevice getSelectedPhysicalDevice() const;
     VkPhysicalDeviceProperties getSelectedPhysicalDeviceProp() const;
+    VkPhysicalDeviceRayTracingPipelinePropertiesKHR getSelectedPhysicalDeviceRayTracingProperties() const;
 
     VkSurfaceKHR getSurfaceKHR() const;
 

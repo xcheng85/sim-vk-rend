@@ -31,6 +31,18 @@ struct IndirectDrawDef1
     int materialIndex;
 };
 
+inline std::ostream &operator<<(std::ostream &os, const IndirectDrawDef1 &id)
+{
+    log(Level::Info, "meshId: ", id.meshId);
+    log(Level::Info, "indexCount: ", id.indexCount);
+    log(Level::Info, "instanceCount: ", id.instanceCount);
+    log(Level::Info, "firstIndex: ", id.firstIndex);
+    log(Level::Info, "vertexOffset: ", id.vertexOffset);
+    log(Level::Info, "firstInstance: ", id.firstInstance);
+    log(Level::Info, "materialIndex: ", id.materialIndex);
+    return os;
+}
+
 //
 // struct Vertex {
 //    vec3f pos;

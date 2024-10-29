@@ -264,7 +264,7 @@ private:
             buffers.emplace_back(_ctx->createPersistentBuffer(
                 "Uniform Fustrum Buffer" + std::to_string(i),
                 numFramesInFlight * sizeof(Fustrum),
-                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT));
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT));
         }
 
         _fustrumBuffers = std::make_tuple(buffers, numFramesInFlight);

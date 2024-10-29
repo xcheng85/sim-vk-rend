@@ -396,6 +396,8 @@ void readMeshes(const Microsoft::glTF::Document &document,
                 ",", currMesh.center[COMPONENT::Y],
                 ",", currMesh.center[COMPONENT::Z]);
 
+            log(Level::Info, indirectDraw);
+
             outputScene.meshes.emplace_back(currMesh);
             outputScene.indirectDraw.emplace_back(indirectDraw);
             outputScene.totalVerticesByteSize +=

@@ -75,9 +75,16 @@ enum COMMAND_SEMANTIC : int
 class Window;
 
 using CommandBufferEntity = std::tuple<VkCommandPool, VkCommandBuffer, VkFence, uint32_t, VkQueue>;
+enum COMMAND_BUFFER_ENTITY_OFFSET : int
+{
+    COMMAND_POOL = 0,
+    COMMAND_BUFFER,
+    FENCE,
+    QUEUE_FAMILY_INDEX,
+    QUEUE
+};
 
 using ImageEntity = std::tuple<VkImage, VkImageView, VmaAllocation, VmaAllocationInfo, uint32_t, VkExtent3D, VkFormat>;
-
 enum IMAGE_ENTITY_OFFSET : int
 {
     IMAGE = 0,
@@ -88,7 +95,20 @@ enum IMAGE_ENTITY_OFFSET : int
 };
 
 using MappingAddressType = void *;
-using BufferEntity = std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo, MappingAddressType, VkDeviceSize>;
+
+// VkDeviceOrHostAddressConstKHR: Union specifying a const device or host address
+// Gpu device local buffer: 64bit address could be accessed by shader
+// staging buffer: void*
+using BufferEntity = std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo, MappingAddressType, VkDeviceSize, VkDeviceOrHostAddressConstKHR >;
+enum BUFFER_ENTITY_UID : int
+{
+    BUFFER = 0,
+    VMA_ALLOCATION,
+    VMA_ALLOCATION_INFO,
+    MAPPING_ADDRESS,
+    BUFFER_SIZE,
+    DEVICE_HOST_ADDRESS
+};
 
 class VkContext
 {

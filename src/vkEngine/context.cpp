@@ -1028,7 +1028,7 @@ void VkContext::Impl::selectFeatures()
     sEnable12Features.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;
     sEnable12Features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
     sEnable12Features.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
-    // vkCreateDescriptorSetLayout(): pCreateInfo->pNext<VkDescriptorSetLayoutBindingFlagsCreateInfo>.pBindingFlags[0] includes VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT 
+    // vkCreateDescriptorSetLayout(): pCreateInfo->pNext<VkDescriptorSetLayoutBindingFlagsCreateInfo>.pBindingFlags[0] includes VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT
     // but pBindings[0].descriptorType is VK_DESCRIPTOR_TYPE_STORAGE_IMAGE but descriptorBindingStorageImageUpdateAfterBind was not enabled
     sEnable12Features.descriptorBindingStorageImageUpdateAfterBind = VK_TRUE;
     sEnable12Features.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
@@ -1632,14 +1632,21 @@ BufferEntity VkContext::Impl::createBuffer(
                              &bufferMemoryAllocationCreateInfo,
                              &buffer,
                              &allocation, nullptr));
+
+    VkBufferDeviceAddressInfoKHR bufferDeviceAI{};
+    bufferDeviceAI.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    bufferDeviceAI.buffer = buffer;
+    VkDeviceOrHostAddressConstKHR da{
+        .deviceAddress = vkGetBufferDeviceAddressKHR(_logicalDevice, &bufferDeviceAI),
+    };
     vmaGetAllocationInfo(_vmaAllocator, allocation, &allocationInfo);
     if (!mapping)
-        return make_tuple(buffer, allocation, allocationInfo, nullptr, bufferSizeInBytes);
+        return make_tuple(buffer, allocation, allocationInfo, nullptr, bufferSizeInBytes, da);
     else
     {
         MappingAddressType address;
         VK_CHECK(vmaMapMemory(_vmaAllocator, allocation, &address));
-        return make_tuple(buffer, allocation, allocationInfo, address, bufferSizeInBytes);
+        return make_tuple(buffer, allocation, allocationInfo, address, bufferSizeInBytes, da);
     }
 }
 
@@ -1670,7 +1677,7 @@ BufferEntity VkContext::Impl::createStagingBuffer(const std::string &name, VkDev
     return createBuffer(
         name,
         bufferSizeInBytes,
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         VK_SHARING_MODE_EXCLUSIVE,
         VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
             VMA_ALLOCATION_CREATE_MAPPED_BIT,

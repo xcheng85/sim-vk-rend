@@ -62,6 +62,27 @@ public:
         return _dsPool;
     }
 
+    // algorithm specific
+    inline void setCompositeVerticeBuffer(BufferEntity *vb)
+    {
+        _compositeVB = vb;
+    }
+
+    inline void setCompositeIndicesBuffer(BufferEntity *ib)
+    {
+        _compositeIB = ib;
+    }
+
+    inline void setCompositeMaterialBuffer(BufferEntity *mb)
+    {
+        _compositeMatB = mb;
+    }
+
+    inline void setIndirectDrawBuffer(BufferEntity *idb)
+    {
+        _indirectDrawB = idb;
+    }
+
     virtual void finalizeInit() override
     {
         initShaderModules();
@@ -271,11 +292,165 @@ public:
         _uniformCameraPropBuffer = _ctx->createPersistentBuffer(
             "Uniform Camera Prop Buffer",
             sizeof(UniformCameraProp),
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
     }
 
     void initBLAS()
     {
+        // real geometry data
+        ASSERT(_ctx, "vk context should be defined");
+        ASSERT(_scene, "scene should be defined");
+        auto logicalDevice = _ctx->getLogicDevice();
+        // a graphics command buffer is needed for build AS
+        auto cmdBuffersForIO = _ctx->getCommandBufferForIO();
+        // where the command buffer submitted to.
+        auto graphicsComputeQueue = _ctx->getGraphicsComputeQueue();
+
+        size_t meshId = 0;
+        for (const auto &mesh : _scene->meshes)
+        {
+            // from the composite vb and composite ib, I need to fetch the range of vb and ib for this mesh
+            // auto vertexByteSizeMesh = sizeof(Vertex) * mesh.vertices.size();
+            // auto vertexBufferPtr = reinterpret_cast<const void *>(mesh.vertices.data());
+            // auto indicesByteSizeMesh = sizeof(uint32_t) * mesh.indices.size();
+            // auto indicesBufferPtr = reinterpret_cast<const void *>(mesh.indices.data());
+
+            auto vbDeviceStartingAddress = std::get<BUFFER_ENTITY_UID::DEVICE_HOST_ADDRESS>(*_compositeVB).deviceAddress;
+            auto vbOffsetInByteForMesh = _scene->indirectDraw[meshId].vertexOffset * sizeof(Vertex);
+            VkDeviceOrHostAddressConstKHR vbDeviceAddressForMesh{
+                .deviceAddress = vbDeviceStartingAddress + vbOffsetInByteForMesh,
+            };
+
+            const auto numVertices = mesh.vertices.size();
+
+            auto ibDeviceStartingAddress = std::get<BUFFER_ENTITY_UID::DEVICE_HOST_ADDRESS>(*_compositeIB).deviceAddress;
+            auto ibOffsetInByteForMesh = _scene->indirectDraw[meshId].firstIndex * sizeof(uint32_t);
+            VkDeviceOrHostAddressConstKHR ibDeviceAddressForMesh{
+                .deviceAddress = ibDeviceStartingAddress + ibOffsetInByteForMesh,
+            };
+
+            VkAccelerationStructureGeometryKHR accelerationStructureGeometry{};
+            accelerationStructureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+            // VK_GEOMETRY_OPAQUE_BIT_KHR indicates that this geometry does not invoke the any-hit shaders even if present in a hit group.
+            accelerationStructureGeometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+            accelerationStructureGeometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+            accelerationStructureGeometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+            accelerationStructureGeometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+            accelerationStructureGeometry.geometry.triangles.vertexData = vbDeviceAddressForMesh;
+            accelerationStructureGeometry.geometry.triangles.maxVertex = numVertices;
+            accelerationStructureGeometry.geometry.triangles.vertexStride = sizeof(Vertex);
+            accelerationStructureGeometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
+            accelerationStructureGeometry.geometry.triangles.indexData = ibDeviceAddressForMesh;
+            // no per-vertex transform needed here, done in the glb.cpp, see line334. vertex.transform(m);
+            accelerationStructureGeometry.geometry.triangles.transformData.hostAddress = nullptr;
+
+            // 1 geometry (mesh, triangle)
+            VkAccelerationStructureBuildGeometryInfoKHR accelerationStructureBuildGeometryInfo{};
+            accelerationStructureBuildGeometryInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+            // BLAS
+            accelerationStructureBuildGeometryInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+            accelerationStructureBuildGeometryInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+            accelerationStructureBuildGeometryInfo.geometryCount = 1;
+            accelerationStructureBuildGeometryInfo.pGeometries = &accelerationStructureGeometry;
+
+            auto numTriangles = static_cast<uint32_t>(mesh.indices.size() / 3);
+            // fill in this structure, scratch buffer: pre-allocated memory
+            VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
+            accelerationStructureBuildSizesInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+            vkGetAccelerationStructureBuildSizesKHR(
+                logicalDevice,
+                VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+                &accelerationStructureBuildGeometryInfo,
+                &numTriangles,
+                &accelerationStructureBuildSizesInfo);
+
+            // VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR specifies that the buffer is suitable for storage space for a VkAccelerationStructureKHR.
+            // device local buffer
+            // for build operation: requires two buffers. 1. for as, 2. for build op itself
+            // for update operation:
+            const auto blasBufferSizeInBytes = accelerationStructureBuildSizesInfo.accelerationStructureSize;
+            const auto blasBuildBufferSizeInBytes = accelerationStructureBuildSizesInfo.buildScratchSize;
+            const auto blasBuffer = _ctx->createDeviceLocalBuffer(
+                "BLAS Buffer",
+                blasBufferSizeInBytes,
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+            const auto blasBuildBuffer = _ctx->createDeviceLocalBuffer(
+                "BLAS Buffer for build op",
+                blasBuildBufferSizeInBytes,
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+
+            // once the buffer is ready, you can create the actual AS
+            // a bottom-level acceleration structure containing a set of triangles.
+            VkAccelerationStructureKHR blasForTriangles;
+            VkAccelerationStructureCreateInfoKHR accelerationStructureCreateInfo{};
+            accelerationStructureCreateInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+            accelerationStructureCreateInfo.buffer = std::get<BUFFER_ENTITY_UID::BUFFER>(blasBuffer);
+            accelerationStructureCreateInfo.size = blasBufferSizeInBytes;
+            accelerationStructureCreateInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+            vkCreateAccelerationStructureKHR(logicalDevice, &accelerationStructureCreateInfo, nullptr, &blasForTriangles);
+
+            // blas here for the geometry (triangles)
+            VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo{};
+            accelerationBuildGeometryInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+            accelerationBuildGeometryInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+            accelerationBuildGeometryInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+            accelerationBuildGeometryInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+            accelerationBuildGeometryInfo.dstAccelerationStructure = blasForTriangles;
+            accelerationBuildGeometryInfo.geometryCount = 1;
+            accelerationBuildGeometryInfo.pGeometries = &accelerationStructureGeometry;
+            accelerationBuildGeometryInfo.scratchData.deviceAddress = std::get<BUFFER_ENTITY_UID::DEVICE_HOST_ADDRESS>(blasBuildBuffer).deviceAddress;
+
+            VkAccelerationStructureBuildRangeInfoKHR accelerationStructureBuildRangeInfo{};
+            accelerationStructureBuildRangeInfo.primitiveCount = numTriangles;
+            accelerationStructureBuildRangeInfo.primitiveOffset = 0;
+            accelerationStructureBuildRangeInfo.firstVertex = 0;
+            accelerationStructureBuildRangeInfo.transformOffset = 0;
+            std::vector<VkAccelerationStructureBuildRangeInfoKHR *> accelerationBuildStructureRangeInfos = {&accelerationStructureBuildRangeInfo};
+
+            // submit command to gpu to build the blas
+            const auto commandBufferToBuildAS = std::get<COMMAND_BUFFER_ENTITY_OFFSET::COMMAND_BUFFER>(cmdBuffersForIO);
+            const auto fenceToBuildAS = std::get<COMMAND_BUFFER_ENTITY_OFFSET::FENCE>(cmdBuffersForIO);
+            _ctx->BeginRecordCommandBuffer(cmdBuffersForIO);
+            vkCmdBuildAccelerationStructuresKHR(commandBufferToBuildAS,
+                                                1, &accelerationBuildGeometryInfo,
+                                                accelerationBuildStructureRangeInfos.data());
+            _ctx->EndRecordCommandBuffer(cmdBuffersForIO);
+
+            // wait for no body
+            VkSubmitInfo submitInfo{};
+            submitInfo.waitSemaphoreCount = 0;
+            submitInfo.pWaitSemaphores = VK_NULL_HANDLE;
+            // only useful when having waitsemaphore
+            submitInfo.pWaitDstStageMask = VK_NULL_HANDLE;
+            submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submitInfo.commandBufferCount = 1;
+            submitInfo.pCommandBuffers = &commandBufferToBuildAS;
+            // no body needs to be notified
+            submitInfo.signalSemaphoreCount = 0;
+            submitInfo.pSignalSemaphores = VK_NULL_HANDLE;
+
+            VK_CHECK(vkResetFences(logicalDevice, 1, &fenceToBuildAS));
+            VK_CHECK(vkQueueSubmit(graphicsComputeQueue, 1, &submitInfo, fenceToBuildAS));
+            const auto result = vkWaitForFences(logicalDevice, 1, &fenceToBuildAS, VK_TRUE,
+                                                100000000000);
+            if (result == VK_TIMEOUT)
+            {
+                vkDeviceWaitIdle(logicalDevice);
+            }
+
+            // connection between blas and tlas
+            // 64-bit address: which can be used for device and shader operations 
+            VkAccelerationStructureDeviceAddressInfoKHR accelerationDeviceAddressInfo{};
+            accelerationDeviceAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
+            accelerationDeviceAddressInfo.accelerationStructure = blasForTriangles;
+            const VkDeviceAddress blasAddress = vkGetAccelerationStructureDeviceAddressKHR(logicalDevice, &accelerationDeviceAddressInfo);
+
+            const auto blasAddress2 = std::get<BUFFER_ENTITY_UID::DEVICE_HOST_ADDRESS>(blasBuffer).deviceAddress;
+
+
+            _blasEntity = std::make_tuple(blasBuffer, blasForTriangles, blasAddress);
+            ++meshId;
+        }
     }
 
     void initTLAS()
@@ -309,4 +484,12 @@ private:
     // input/output of rt shaders
     ImageEntity _rtOutputImage;
     BufferEntity _uniformCameraPropBuffer;
+
+    // to build blas, it needs following:
+    BufferEntity *_compositeVB;
+    BufferEntity *_compositeIB;
+    BufferEntity *_compositeMatB;
+    BufferEntity *_indirectDrawB;
+
+    std::tuple<BufferEntity, VkAccelerationStructureKHR, VkDeviceAddress> _blasEntity;
 };

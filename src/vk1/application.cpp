@@ -75,6 +75,10 @@ void VkApplication::init()
     _rt->setContext(&this->_ctx);
     _rt->setCamera(&this->_camera);
     _rt->setScene(_scene);
+    _rt->setCompositeVerticeBuffer(&_compositeVB);
+    _rt->setCompositeIndicesBuffer(&_compositeIB);
+    _rt->setCompositeMaterialBuffer(&_compositeMatB);
+    _rt->setIndirectDrawBuffer(&_indirectDrawB);
     _rt->setDescriptorPool(this->_descriptorSetPool);
     _rt->finalizeInit();
 
@@ -296,10 +300,11 @@ void VkApplication::createUniformBuffers()
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
+        // VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT is required to fetch the uint64_t shader address
         _uniformBuffers.emplace_back(_ctx.createPersistentBuffer(
             "Uniform buffer " + std::to_string(i),
             bufferSize,
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT));
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT));
     }
 }
 
@@ -1330,7 +1335,8 @@ inline void uploadTextureToGPU(
                                               textureLayoutCount,
                                               VK_SAMPLE_COUNT_1_BIT,
                                               // usage here: both dst and src as mipmap generation
-                                              VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                                              VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | 
+                                              VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
                                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
                                               generateMipmaps);
     imageEntities.emplace_back(imageEntity);

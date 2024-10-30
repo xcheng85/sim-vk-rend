@@ -344,7 +344,7 @@ public:
             // no per-vertex transform needed here, done in the glb.cpp, see line334. vertex.transform(m);
             accelerationStructureGeometry.geometry.triangles.transformData.hostAddress = nullptr;
 
-            // 1 geometry (mesh, triangle)
+            // 1. geometry (mesh, triangle), step1, just to get the size
             VkAccelerationStructureBuildGeometryInfoKHR accelerationStructureBuildGeometryInfo{};
             accelerationStructureBuildGeometryInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
             // BLAS
@@ -373,11 +373,11 @@ public:
             const auto blasBuffer = _ctx->createDeviceLocalBuffer(
                 "BLAS Buffer",
                 blasBufferSizeInBytes,
-                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+                VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
             const auto blasBuildBuffer = _ctx->createDeviceLocalBuffer(
                 "BLAS Buffer for build op",
                 blasBuildBufferSizeInBytes,
-                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
 
             // once the buffer is ready, you can create the actual AS
             // a bottom-level acceleration structure containing a set of triangles.
@@ -389,7 +389,7 @@ public:
             accelerationStructureCreateInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
             vkCreateAccelerationStructureKHR(logicalDevice, &accelerationStructureCreateInfo, nullptr, &blasForTriangles);
 
-            // blas here for the geometry (triangles)
+            //step2: ready to build, blas here for the geometry (triangles)
             VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo{};
             accelerationBuildGeometryInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
             accelerationBuildGeometryInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;

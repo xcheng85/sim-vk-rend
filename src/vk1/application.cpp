@@ -1335,8 +1335,8 @@ inline void uploadTextureToGPU(
                                               textureLayoutCount,
                                               VK_SAMPLE_COUNT_1_BIT,
                                               // usage here: both dst and src as mipmap generation
-                                              VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | 
-                                              VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                                              VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+                                                  VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
                                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
                                               generateMipmaps);
     imageEntities.emplace_back(imageEntity);
@@ -1561,7 +1561,9 @@ void VkApplication::loadGLB()
                 bufferByteSize,
                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
                     VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                    VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR // raytracing need
+            );
         }
 
         {
@@ -1575,7 +1577,9 @@ void VkApplication::loadGLB()
                     VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                     VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-                    VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT);
+                    VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+                    VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR // raytracing need);
+            );
         }
 
         // upload data to buffer

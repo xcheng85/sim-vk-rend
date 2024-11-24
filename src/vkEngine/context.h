@@ -31,6 +31,7 @@
 #include <numeric>
 #include <filesystem> // for shader
 
+
 // must ahead of <vk_mem_alloc.h>, or else it will crash on vk functions
 #ifndef __ANDROID__
 #define VK_NO_PROTOTYPES // for volk
@@ -42,6 +43,9 @@
 // In exactly one CPP file define following macro before this include. It enables also internal definitions.
 #include <vk_mem_alloc.h>
 #include <misc.h>
+
+#include <tracy/Tracy.hpp>
+#include <tracy/TracyVulkan.hpp>
 
 #if defined(__ANDROID__)
 // functor for custom deleter for unique_ptr
@@ -99,7 +103,7 @@ using MappingAddressType = void *;
 // VkDeviceOrHostAddressConstKHR: Union specifying a const device or host address
 // Gpu device local buffer: 64bit address could be accessed by shader
 // staging buffer: void*
-using BufferEntity = std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo, MappingAddressType, VkDeviceSize, VkDeviceOrHostAddressConstKHR >;
+using BufferEntity = std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo, MappingAddressType, VkDeviceSize, VkDeviceOrHostAddressConstKHR>;
 enum BUFFER_ENTITY_UID : int
 {
     BUFFER = 0,
@@ -108,6 +112,14 @@ enum BUFFER_ENTITY_UID : int
     MAPPING_ADDRESS,
     BUFFER_SIZE,
     DEVICE_HOST_ADDRESS
+};
+
+using ASEntity = std::tuple<BufferEntity, VkAccelerationStructureKHR, VkDeviceAddress>;
+enum AS_ENTITY_UID : int
+{
+    BUFFER_ENTITY = 0,
+    AS,
+    DEVICE_ADDRESS
 };
 
 class VkContext
@@ -155,6 +167,7 @@ public:
         uint32_t count,
         uint32_t inflightCount,
         VkFenceCreateFlags flags);
+        
 
     void BeginRecordCommandBuffer(CommandBufferEntity &cmdBuffer);
     void EndRecordCommandBuffer(CommandBufferEntity &cmdBuffer);
@@ -177,10 +190,22 @@ public:
     // buffer specially for SBT
     std::tuple<BufferEntity, VkStridedDeviceAddressRegionKHR> createShaderBindTableBuffer(
         const std::string &name,
-        VkDeviceSize bufferSizeInBytes, // not consider alignment
+        VkDeviceSize bufferSizeInBytes,        // not consider alignment
         VkDeviceSize alignedBufferSizeInBytes, // consider alignment
         VkDeviceSize alignedStrideSizeInBytes, // in case of multiple ray miss stages, considering aligneded bytes
         bool mapping);
+
+    // most generic api which should be used when none of the other three buffer creation apis could apply to
+    BufferEntity createBuffer(
+        const std::string &name,
+        VkDeviceSize bufferSizeInBytes,
+        VkBufferUsageFlags bufferUsageFlag,
+        VkSharingMode bufferSharingMode,
+        VmaAllocationCreateFlags memoryAllocationFlag,
+        VkMemoryPropertyFlags requiredMemoryProperties,
+        VkMemoryPropertyFlags preferredMemoryProperties,
+        VmaMemoryUsage memoryUsage,
+        bool mapping = false);
 
     ImageEntity createImage(
         const std::string &name,
@@ -305,6 +330,10 @@ public:
     // non-graphics ops
     const CommandBufferEntity &getCommandBufferForTransferOnly() const;
     std::pair<uint32_t, CommandBufferEntity> getCommandBufferForRendering() const;
+
+    // let application to access the tracy
+    TracyVkCtx getTracyContext() const;
+
     void advanceCommandBuffer();
 
     void submitCommand();

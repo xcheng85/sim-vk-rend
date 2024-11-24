@@ -1,5 +1,16 @@
 # sim-vk-rend
 
+## GPU profiling with Tracy Profiler
+
+### 1. cmake side
+-DTRACY_CALLSTACK=ON -DTRACY_ENABLE=ON (default)
+
+### 2. dedicated command buffer foir tracy only
+
+### 3. tracy with vulkan
+TracyVkZone: your real cmdbuffer not the tracy dedicate cmd buffer
+Tr
+
 ## How to design architecture of misc rendering passes 
 
 ### What are the components of a rendering pass

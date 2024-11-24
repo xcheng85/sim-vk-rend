@@ -79,6 +79,7 @@ inline const std::set<std::string> &getInstanceExtensions()
         "VK_KHR_portability_enumeration",
         // "VK_GOOGLE_surfaceless_query",
         "VK_LUNARG_direct_driver_loading",
+        // retrieving debug info from shaders
         "VK_EXT_layer_settings"};
     return instanceExtensions;
 }

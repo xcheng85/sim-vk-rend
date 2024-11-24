@@ -12,6 +12,7 @@ target_link_libraries(
     vkEngine
     GLTFSDK
     ${Vulkan_LIBRARIES} volk_headers ${RequiredVulkanSDKLIBS}
+    TracyClient
 )
 
 #glm

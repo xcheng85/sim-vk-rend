@@ -90,6 +90,15 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(glm)
 include_directories(${glm_SOURCE_DIR})
 
+FetchContent_Declare (
+  tracy
+  GIT_REPOSITORY https://github.com/wolfpld/tracy.git
+  GIT_TAG v0.11.1
+  GIT_SHALLOW TRUE
+  GIT_PROGRESS TRUE
+)
+FetchContent_MakeAvailable(tracy)
+
 # for experimental/future
 #GCC provides experimental support for the upcoming ISO C++ standard, C++0x. 
 #This support can be enabled with the -std=c++0x or -std=gnu++0x compiler options; 

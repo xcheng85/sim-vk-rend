@@ -4,6 +4,9 @@
 #include <context.h>
 #include <window.h>
 
+#include <tracy/Tracy.hpp>
+#include <tracy/TracyVulkan.hpp>
+
 #include <queuethreadsafe.h>
 #include <future> //packaged_task<>
 
@@ -51,6 +54,9 @@ public:
         createLogicDevice();
         cacheCommandQueue();
         createVMA();
+
+        createCommandPool();
+        createTracyContext();
     }
 
     Impl(const Impl &) = delete;
@@ -93,6 +99,8 @@ public:
         vkDestroySurfaceKHR(_instance, _surface, nullptr);
         vkDestroyDevice(_logicalDevice, nullptr);
         vkDestroyInstance(_instance, nullptr);
+
+        TracyVkDestroy(_tracyCtx);
     }
 
     void createSwapChain();
@@ -109,6 +117,8 @@ public:
         const VkImageView stencil,
         uint32_t width,
         uint32_t height);
+
+    void createCommandPool();
 
     std::vector<CommandBufferEntity> createGraphicsCommandBuffers(
         const std::string &name,
@@ -181,6 +191,17 @@ public:
         const std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, const char *, const VkSpecializationInfo *>> &shaderModuleEntities,
         const std::vector<VkDescriptorSetLayout> &dsLayouts,
         const std::vector<VkPushConstantRange> &pushConstants);
+
+    BufferEntity createBuffer(
+        const std::string &name,
+        VkDeviceSize bufferSizeInBytes,
+        VkBufferUsageFlags bufferUsageFlag,
+        VkSharingMode bufferSharingMode,
+        VmaAllocationCreateFlags memoryAllocationFlag,
+        VkMemoryPropertyFlags requiredMemoryProperties,
+        VkMemoryPropertyFlags preferredMemoryProperties,
+        VmaMemoryUsage memoryUsage,
+        bool mapping = false);
 
     std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> allocateDescriptorSet(
         const VkDescriptorPool pool,
@@ -310,6 +331,11 @@ public:
         return _swapChainImageViews;
     }
 
+    inline TracyVkCtx getTracyContext() const
+    {
+        return _tracyCtx;
+    }
+
     // cmdpool and cmdbuffers
     std::unordered_map<COMMAND_SEMANTIC, std::vector<CommandBufferEntity>> cmdBuffers;
 
@@ -380,6 +406,7 @@ private:
 
 #ifndef __ANDROID__
         // 4. VkLayerSettingsCreateInfoEXT - Specify layer capabilities for a Vulkan instance
+        // see shader debug info feedback to host app for unit tests purpose
         VkLayerSettingsCreateInfoEXT layer_settings_create_info;
         {
             const std::string layer_name = "VK_LAYER_KHRONOS_validation";
@@ -794,16 +821,7 @@ private:
         uint32_t queueFamilyIndex,
         VkQueue queue);
 
-    BufferEntity createBuffer(
-        const std::string &name,
-        VkDeviceSize bufferSizeInBytes,
-        VkBufferUsageFlags bufferUsageFlag,
-        VkSharingMode bufferSharingMode,
-        VmaAllocationCreateFlags memoryAllocationFlag,
-        VkMemoryPropertyFlags requiredMemoryProperties,
-        VkMemoryPropertyFlags preferredMemoryProperties,
-        VmaMemoryUsage memoryUsage,
-        bool mapping = false);
+    void createTracyContext();
 
     bool checkValidationLayerSupport() const
     {
@@ -995,6 +1013,13 @@ private:
     std::vector<VkImageView> _swapChainImageViews;
     // fbo for swapchain
     std::vector<VkFramebuffer> _swapChainFramebuffers;
+
+    // tracy context
+    // so far these are only used for dedicated tracy only
+    VkCommandPool _graphicsCmdPool{VK_NULL_HANDLE};
+    VkCommandPool _computeCmdPool{VK_NULL_HANDLE};
+    VkCommandPool _transferCmdPool{VK_NULL_HANDLE};
+    TracyVkCtx _tracyCtx{nullptr};
 };
 
 void VkContext::Impl::selectFeatures()
@@ -1177,6 +1202,27 @@ void VkContext::Impl::cacheCommandQueue()
     ASSERT(_transferQueue, "Failed to access transfer queue");
     ASSERT(_presentationQueue, "Failed to access presentation queue");
     ASSERT(_sparseQueues, "Failed to access sparse queue");
+}
+
+void VkContext::Impl::createCommandPool()
+{
+    VkCommandPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    // VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
+    // since we want to record a command buffer every frame, so we want to be able to
+    // reset and record over it
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    poolInfo.queueFamilyIndex = _graphicsQueueIndex;
+    VK_CHECK(vkCreateCommandPool(_logicalDevice, &poolInfo, nullptr, &_graphicsCmdPool));
+    //setCorrlationId(_instance, _logicalDevice, VK_OBJECT_TYPE_COMMAND_POOL, "createCommandPool: graphics");
+
+    poolInfo.queueFamilyIndex = _computeQueueIndex;
+    VK_CHECK(vkCreateCommandPool(_logicalDevice, &poolInfo, nullptr, &_computeCmdPool));
+    //setCorrlationId(_instance, _logicalDevice, VK_OBJECT_TYPE_COMMAND_POOL, "createCommandPool: compute");
+
+    poolInfo.queueFamilyIndex = _transferQueueIndex;
+    VK_CHECK(vkCreateCommandPool(_logicalDevice, &poolInfo, nullptr, &_transferCmdPool));
+    //setCorrlationId(_instance, _logicalDevice, VK_OBJECT_TYPE_COMMAND_POOL, "createCommandPool: transfer");
 }
 
 void VkContext::Impl::createVMA()
@@ -1598,6 +1644,24 @@ void VkContext::Impl::EndRecordCommandBuffer(CommandBufferEntity &cmdBufferEntit
 {
     const auto cmdBufferHandle = std::get<1>(cmdBufferEntity);
     VK_CHECK(vkEndCommandBuffer(cmdBufferHandle));
+}
+
+// deps: physicalDevice, logicalDevice, graphicsQueueIndex, commandBuffer,
+void VkContext::Impl::createTracyContext()
+{
+    ASSERT(_graphicsCmdPool, "graphics command pool should be valid for creating tracy context");
+
+    ZoneScopedN("VkContext: createTracyContext");
+    const VkCommandBufferAllocateInfo allocInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = _graphicsCmdPool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+    VkCommandBuffer cmdBuffer{VK_NULL_HANDLE};
+    VK_CHECK(vkAllocateCommandBuffers(_logicalDevice, &allocInfo, &cmdBuffer));
+
+    _tracyCtx = TracyVkContext(_selectedPhysicalDevice, _logicalDevice, _graphicsComputeQueue, cmdBuffer);
 }
 
 BufferEntity VkContext::Impl::createBuffer(
@@ -2738,6 +2802,29 @@ std::tuple<BufferEntity, VkStridedDeviceAddressRegionKHR> VkContext::createShade
     return _pimpl->createShaderBindTableBuffer(name, bufferSizeInBytes, alignedBufferSizeInBytes, alignedStrideSizeInBytes, mapping);
 }
 
+BufferEntity VkContext::createBuffer(
+    const std::string &name,
+    VkDeviceSize bufferSizeInBytes,
+    VkBufferUsageFlags bufferUsageFlag,
+    VkSharingMode bufferSharingMode,
+    VmaAllocationCreateFlags memoryAllocationFlag,
+    VkMemoryPropertyFlags requiredMemoryProperties,
+    VkMemoryPropertyFlags preferredMemoryProperties,
+    VmaMemoryUsage memoryUsage,
+    bool mapping)
+{
+    return _pimpl->createBuffer(
+        name,
+        bufferSizeInBytes,
+        bufferUsageFlag,
+        bufferSharingMode,
+        memoryAllocationFlag,
+        requiredMemoryProperties,
+        preferredMemoryProperties,
+        memoryUsage,
+        mapping);
+}
+
 ImageEntity VkContext::createImage(
     const std::string &name,
     VkImageType imageType,
@@ -2976,6 +3063,11 @@ const CommandBufferEntity &VkContext::getCommandBufferForTransferOnly() const
 std::pair<uint32_t, CommandBufferEntity> VkContext::getCommandBufferForRendering() const
 {
     return _pimpl->getCommandBufferForRendering();
+}
+
+TracyVkCtx VkContext::getTracyContext() const
+{
+    return _pimpl->getTracyContext();
 }
 
 void VkContext::advanceCommandBuffer()

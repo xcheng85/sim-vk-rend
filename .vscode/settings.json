@@ -86,6 +86,11 @@
         "xtree": "cpp",
         "any": "cpp",
         "resumable": "cpp",
-        "future": "cpp"
+        "future": "cpp",
+        "execution": "cpp",
+        "cinttypes": "cpp",
+        "random": "cpp",
+        "valarray": "cpp",
+        "variant": "cpp"
     }
 }

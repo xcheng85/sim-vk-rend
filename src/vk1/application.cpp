@@ -7,6 +7,9 @@
 #include <glm/ext.hpp>
 #include <glm/glm.hpp>
 
+#include <tracy/Tracy.hpp>
+#include <tracy/TracyVulkan.hpp>
+
 #define VK_NO_PROTOTYPES // for volk
 #define VOLK_IMPLEMENTATION
 
@@ -683,6 +686,7 @@ void VkApplication::preHostDeviceIO()
 // wait for completion using fence
 void VkApplication::postHostDeviceIO()
 {
+
     auto logicalDevice = _ctx.getLogicDevice();
     auto graphicsQueue = _ctx.getGraphicsComputeQueue();
     auto vmaAllocator = _ctx.getVmaAllocator();
@@ -693,6 +697,9 @@ void VkApplication::postHostDeviceIO()
     const auto uploadCmdBuffer = std::get<1>(cmdBuffersForIO);
     const auto uploadCmdBufferFence = std::get<2>(cmdBuffersForIO);
 
+    // collect the timestamps of the command buffer
+    const auto tracyCtx = _ctx.getTracyContext();
+    TracyVkCollect(tracyCtx, std::get<COMMAND_BUFFER>(cmdBuffersForIO));
     _ctx.EndRecordCommandBuffer(cmdBuffersForIO);
 
     const VkPipelineStageFlags flags = VK_PIPELINE_STAGE_TRANSFER_BIT;
@@ -1352,22 +1359,27 @@ inline void uploadTextureToGPU(
     // data racing hazard
     imageBuffers.emplace_back(stagingBuffer);
 
-    ctx->BeginRecordCommandBuffer(cmdBufferForTransferOnly);
-    ctx->writeImage(
-        imageEntity,
-        stagingBuffer,
-        cmdBufferForTransferOnly,
-        texture->data);
     const auto transferCmdBufferHandle = std::get<1>(cmdBufferForTransferOnly);
     const auto srcQueueFamilyIndex = std::get<3>(cmdBufferForTransferOnly);
     const auto dstQueueFamilyIndex = std::get<3>(cmdBufferForGraphics);
     const auto transferCmdBufferFence = std::get<2>(cmdBufferForTransferOnly);
     const auto transferCmdQueue = std::get<4>(cmdBufferForTransferOnly);
-    ctx->releaseQueueFamilyOwnership(
-        cmdBufferForTransferOnly,
-        imageEntity,
-        srcQueueFamilyIndex,
-        dstQueueFamilyIndex);
+    ctx->BeginRecordCommandBuffer(cmdBufferForTransferOnly);
+    // the {} is for tracy zone
+    // always between the Begin* and End*
+    {
+        ZoneScopedN("uploadTextureToGPU::writeImage");
+        ctx->writeImage(
+            imageEntity,
+            stagingBuffer,
+            cmdBufferForTransferOnly,
+            texture->data);
+        ctx->releaseQueueFamilyOwnership(
+            cmdBufferForTransferOnly,
+            imageEntity,
+            srcQueueFamilyIndex,
+            dstQueueFamilyIndex);
+    }
     ctx->EndRecordCommandBuffer(cmdBufferForTransferOnly);
 
     VkSemaphore semaphore;
@@ -1534,6 +1546,7 @@ void VkApplication::preloadGLB()
     _numTextures = _scene->textures.size();
 }
 
+//
 void VkApplication::loadGLB()
 {
     const auto vk12FeatureCaps = _ctx.getVk12FeatureCaps();
@@ -1548,6 +1561,12 @@ void VkApplication::loadGLB()
 
     const auto uploadCmdBuffer = std::get<1>(cmdBuffersForIO);
     const auto uploadCmdBufferFence = std::get<2>(cmdBuffersForIO);
+
+    const auto tracyCtx = _ctx.getTracyContext();
+
+    ZoneScopedN("load GLB (exclude async texture io)");
+    // the cmdBuffer of interest is the one for io
+    TracyVkZone(tracyCtx, std::get<COMMAND_BUFFER>(cmdBuffersForIO), "load GLB (exclude async texture io)");
 
     // check device feature supported
     if (vk12FeatureCaps.bufferDeviceAddress)

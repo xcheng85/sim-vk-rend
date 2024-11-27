@@ -524,9 +524,13 @@ private:
             createInfo.enabledLayerCount = 0;
             createInfo.pNext = nullptr;
         }
+        log(Level::Info, "Creating vkCreateInstance...");
         VK_CHECK(vkCreateInstance(&createInfo, nullptr, &_instance));
+        log(Level::Info, "volkLoadInstance...");
         volkLoadInstance(_instance);
+
         // 8. Create Debug Utils Messenger
+        log(Level::Info, "volkLoadInstance...");
         VK_CHECK(vkCreateDebugUtilsMessengerEXT(_instance, &messengerInfo, nullptr,
                                                 &_debugMessenger));
         ASSERT(_debugMessenger != VK_NULL_HANDLE, "Error creating DebugUtilsMessenger");
@@ -1024,6 +1028,8 @@ private:
 
 void VkContext::Impl::selectFeatures()
 {
+    log(Level::Info, "-->selectFeatures");
+
     // query all features through single linked list
     // physicalFeatures2 --> indexing_features --> dynamicRenderingFeatures --> nullptr;
     // this gets the capabilities
@@ -1105,10 +1111,12 @@ void VkContext::Impl::selectFeatures()
         sFragmentDensityMapFeatures.fragmentDensityMap = true;
         _featureChain.push(sFragmentDensityMapFeatures);
     }
+    log(Level::Info, "<--selectFeatures");
 }
 
 void VkContext::Impl::createLogicDevice()
 {
+    log(Level::Info, "-->createLogicDevice");
     // enable 3 queue family for the logic device (compute/graphics/transfer)
     const float queuePriority[] = {1.0f, 1.0f};
     std::vector<VkDeviceQueueCreateInfo> queueInfos;
@@ -1170,6 +1178,7 @@ void VkContext::Impl::createLogicDevice()
     logicDeviceCreateInfo.pNext = _featureChain.header();
     logicDeviceCreateInfo.pEnabledFeatures = nullptr;
 
+    log(Level::Info, "Creating logical device");
     VK_CHECK(
         vkCreateDevice(_selectedPhysicalDevice, &logicDeviceCreateInfo, nullptr,
                        &_logicalDevice));
@@ -1179,6 +1188,7 @@ void VkContext::Impl::createLogicDevice()
     setCorrlationId(_logicalDevice, _logicalDevice, VK_OBJECT_TYPE_DEVICE, "Logic Device");
 
     volkLoadDevice(_logicalDevice);
+    log(Level::Info, "<--createLogicDevice");
 }
 
 void VkContext::Impl::cacheCommandQueue()
@@ -1214,15 +1224,15 @@ void VkContext::Impl::createCommandPool()
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     poolInfo.queueFamilyIndex = _graphicsQueueIndex;
     VK_CHECK(vkCreateCommandPool(_logicalDevice, &poolInfo, nullptr, &_graphicsCmdPool));
-    //setCorrlationId(_instance, _logicalDevice, VK_OBJECT_TYPE_COMMAND_POOL, "createCommandPool: graphics");
+    // setCorrlationId(_instance, _logicalDevice, VK_OBJECT_TYPE_COMMAND_POOL, "createCommandPool: graphics");
 
     poolInfo.queueFamilyIndex = _computeQueueIndex;
     VK_CHECK(vkCreateCommandPool(_logicalDevice, &poolInfo, nullptr, &_computeCmdPool));
-    //setCorrlationId(_instance, _logicalDevice, VK_OBJECT_TYPE_COMMAND_POOL, "createCommandPool: compute");
+    // setCorrlationId(_instance, _logicalDevice, VK_OBJECT_TYPE_COMMAND_POOL, "createCommandPool: compute");
 
     poolInfo.queueFamilyIndex = _transferQueueIndex;
     VK_CHECK(vkCreateCommandPool(_logicalDevice, &poolInfo, nullptr, &_transferCmdPool));
-    //setCorrlationId(_instance, _logicalDevice, VK_OBJECT_TYPE_COMMAND_POOL, "createCommandPool: transfer");
+    // setCorrlationId(_instance, _logicalDevice, VK_OBJECT_TYPE_COMMAND_POOL, "createCommandPool: transfer");
 }
 
 void VkContext::Impl::createVMA()
@@ -1274,6 +1284,7 @@ void VkContext::Impl::createVMA()
 
 void VkContext::Impl::createSwapChain()
 {
+    log(Level::Info, "-->createSwapChain");
     const auto selectedPhysicalDevice = _selectedPhysicalDevice;
     const auto graphicsComputeQueueFamilyIndex = _graphicsComputeQueueFamilyIndex;
     const auto presentQueueFamilyIndex = _presentQueueFamilyIndex;
@@ -1349,6 +1360,8 @@ void VkContext::Impl::createSwapChain()
     swapchain.oldSwapchain = VK_NULL_HANDLE;
     VK_CHECK(vkCreateSwapchainKHR(logicalDevice, &swapchain, nullptr, &_swapChain));
     setCorrlationId(_swapChain, logicalDevice, VK_OBJECT_TYPE_SWAPCHAIN_KHR, "Swapchain");
+
+    log(Level::Info, "<--createSwapChain");
 }
 
 void VkContext::Impl::createSwapChainImageView()
@@ -1408,6 +1421,7 @@ void VkContext::Impl::createPerFrameSyncObjects()
 
 VkRenderPass VkContext::Impl::createSwapChainRenderPass()
 {
+    log(Level::Info, "-->createSwapChainRenderPass");
     const auto logicalDevice = _logicalDevice;
 
     VkAttachmentDescription colorAttachment{};
@@ -1504,6 +1518,8 @@ VkRenderPass VkContext::Impl::createSwapChainRenderPass()
     VkRenderPass swapChainRenderPass{VK_NULL_HANDLE};
     VK_CHECK(vkCreateRenderPass(logicalDevice, &renderPassInfo, nullptr, &swapChainRenderPass));
     setCorrlationId(swapChainRenderPass, logicalDevice, VK_OBJECT_TYPE_RENDER_PASS, "Render pass: SwapChain");
+
+    log(Level::Info, "<--createSwapChainRenderPass");
     return swapChainRenderPass;
 }
 
@@ -2643,6 +2659,7 @@ void VkContext::Impl::present(uint32_t swapChainImageIndex)
 
 uint32_t VkContext::Impl::getSwapChainImageIndexToRender() const
 {
+    ZoneScopedN("getSwapChainImageIndexToRender");
     uint32_t swapChainImageIndex;
     VkResult result = vkAcquireNextImageKHR(
         _logicalDevice, _swapChain, UINT64_MAX, imageCanAcquireSemaphores[currentFrameId],
@@ -2736,6 +2753,7 @@ VkFramebuffer VkContext::createFramebuffer(
 
 void VkContext::initDefaultCommandBuffers()
 {
+    log(Level::Info, "-->initDefaultCommandBuffers");
     const auto numFramesInFlight = getSwapChainImageViews().size();
     _pimpl->cmdBuffers.insert(std::make_pair(COMMAND_SEMANTIC::RENDERING,
                                              _pimpl->createGraphicsCommandBuffers("rendering", numFramesInFlight,
@@ -2749,6 +2767,7 @@ void VkContext::initDefaultCommandBuffers()
                                              _pimpl->createGraphicsCommandBuffers("mipmap", 1, 1, VK_FENCE_CREATE_SIGNALED_BIT)));
     _pimpl->cmdBuffers.insert(std::make_pair(COMMAND_SEMANTIC::TRANSFER,
                                              _pimpl->createTransferCommandBuffers("transfer", 1, 1, VK_FENCE_CREATE_SIGNALED_BIT)));
+    log(Level::Info, "<--initDefaultCommandBuffers");
 }
 
 std::vector<CommandBufferEntity> VkContext::createGraphicsCommandBuffers(

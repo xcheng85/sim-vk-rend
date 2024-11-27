@@ -45,15 +45,34 @@ void log(Level level, ARGS &&...args)
         assert(expr);         \
     }
 
-#define VK_CHECK(x)                              \
-    do                                           \
-    {                                            \
-        VkResult err = x;                        \
-        if (err)                                 \
-        {                                        \
-            log(Error, "Detected Vulkan error"); \
-            abort();                             \
-        }                                        \
+#define VK_CHECK(x)                                                                      \
+    do                                                                                   \
+    {                                                                                    \
+        VkResult err = x;                                                                \
+        if (err)                                                                         \
+        {                                                                                \
+            switch (err)                                                                 \
+            {                                                                            \
+            case VK_ERROR_OUT_OF_HOST_MEMORY:                                            \
+                log(Error, "Detected Vulkan error: ", "VK_ERROR_OUT_OF_HOST_MEMORY");    \
+                break;                                                                   \
+            case VK_ERROR_EXTENSION_NOT_PRESENT:                                         \
+                log(Error, "Detected Vulkan error: ", "VK_ERROR_EXTENSION_NOT_PRESENT"); \
+                break;                                                                   \
+            case VK_ERROR_OUT_OF_DEVICE_MEMORY:                                          \
+                log(Error, "Detected Vulkan error: ", "VK_ERROR_OUT_OF_DEVICE_MEMORY");  \
+                break;                                                                   \
+            case VK_ERROR_INITIALIZATION_FAILED:                                         \
+                log(Error, "Detected Vulkan error: ", "VK_ERROR_INITIALIZATION_FAILED"); \
+                break;                                                                   \
+            case VK_ERROR_FEATURE_NOT_PRESENT:                                           \
+                log(Error, "Detected Vulkan error: ", "VK_ERROR_FEATURE_NOT_PRESENT");   \
+                break;                                                                   \
+            default:                                                                     \
+                log(Error, "Detected Vulkan error:", err);                               \
+            }                                                                            \
+            abort();                                                                     \
+        }                                                                                \
     } while (0)
 
 std::string getAssetPath();

@@ -76,11 +76,12 @@ inline const std::set<std::string> &getInstanceExtensions()
         // "VK_EXT_headless_surface",
         "VK_EXT_surface_maintenance1",
         // "VK_EXT_acquire_drm_display",
-        "VK_KHR_portability_enumeration",
+        //"VK_KHR_portability_enumeration", // crash when renderdoc launch
         // "VK_GOOGLE_surfaceless_query",
-        "VK_LUNARG_direct_driver_loading",
+        //"VK_LUNARG_direct_driver_loading", // crash when renderdoc launch
         // retrieving debug info from shaders
-        "VK_EXT_layer_settings"};
+        // "VK_EXT_layer_settings", // crash when renderdoc launch
+        };
     return instanceExtensions;
 }
 
@@ -213,17 +214,20 @@ int main(int argc, char **argv)
         VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME,
         VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,
         VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
-        VK_NV_MESH_SHADER_EXTENSION_NAME,            // mesh_shaders_extension_present
+        // VK_NV_MESH_SHADER_EXTENSION_NAME,            // mesh_shaders_extension_present, nvidia specific ext, renderdoc crash
         VK_KHR_MULTIVIEW_EXTENSION_NAME,             // multiview_extension_present
         VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME, // fragment_shading_rate_present
         VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME,
         VK_KHR_MAINTENANCE2_EXTENSION_NAME,
-        VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, // providing ray tracing shader stages and pipelines
+        // renderdoc crash
+        // VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, // providing ray tracing shader stages and pipelines
         VK_KHR_SPIRV_1_4_EXTENSION_NAME,
-        VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME, // for ray tracing: which provides functionality for acceleration structure building and management
+        // renderdoc crash
+        // VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME, // for ray tracing: which provides functionality for acceleration structure building and management
         VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
-        VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME, // for ray tracing
-        VK_KHR_RAY_QUERY_EXTENSION_NAME, // providing ray query intrinsics for all shader stages
+        // renderdoc crash
+        // VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME, // for ray tracing
+        // VK_KHR_RAY_QUERY_EXTENSION_NAME, // providing ray query intrinsics for all shader stages
         VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME,
         VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
     };

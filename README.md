@@ -1,5 +1,16 @@
 # sim-vk-rend
 
+## Frame debugger with renderdoc v1.25r
+
+### unsupported instance extensions
+VK_KHR_portability_enumeration
+VK_LUNARG_direct_driver_loading
+VK_EXT_layer_settings
+
+### unsupported device extensions (vendor and ray tracing)
+VK_NV_MESH_SHADER_EXTENSION_NAME
+
+
 ## GPU profiling with Tracy Profiler
 
 ### 1. cmake side

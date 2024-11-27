@@ -74,16 +74,17 @@ void VkApplication::init()
     _cullFustrum->setDescriptorPool(this->_descriptorSetPool);
     _cullFustrum->finalizeInit();
 
-    _rt = std::make_unique<RayTracing>();
-    _rt->setContext(&this->_ctx);
-    _rt->setCamera(&this->_camera);
-    _rt->setScene(_scene);
-    _rt->setCompositeVerticeBuffer(&_compositeVB);
-    _rt->setCompositeIndicesBuffer(&_compositeIB);
-    _rt->setCompositeMaterialBuffer(&_compositeMatB);
-    _rt->setIndirectDrawBuffer(&_indirectDrawB);
-    _rt->setDescriptorPool(this->_descriptorSetPool);
-    _rt->finalizeInit();
+    // renderdoc does not support raytracing
+    // _rt = std::make_unique<RayTracing>();
+    // _rt->setContext(&this->_ctx);
+    // _rt->setCamera(&this->_camera);
+    // _rt->setScene(_scene);
+    // _rt->setCompositeVerticeBuffer(&_compositeVB);
+    // _rt->setCompositeIndicesBuffer(&_compositeIB);
+    // _rt->setCompositeMaterialBuffer(&_compositeMatB);
+    // _rt->setIndirectDrawBuffer(&_indirectDrawB);
+    // _rt->setDescriptorPool(this->_descriptorSetPool);
+    // _rt->finalizeInit();
 
     createGraphicsPipeline();
     createSwapChainFramebuffers();
@@ -186,7 +187,10 @@ void VkApplication::renderPerFrame()
     updateUniformBuffer(currentFrameId);
     recordCommandBuffer(currentFrameId, cmdToRecord, swapChainImageIndex);
     _ctx.EndRecordCommandBuffer(cmdBuffersForRendering);
-    _ctx.submitCommand();
+    {
+        ZoneScopedN("CmdMgr: submit");
+        _ctx.submitCommand();
+    }
     _ctx.present(swapChainImageIndex);
     _ctx.advanceCommandBuffer();
 }
@@ -508,11 +512,14 @@ void VkApplication::bindResourceToDescriptorSets()
 
 void VkApplication::createShaderModules()
 {
+    log(Level::Info, "-->createShaderModules");
     auto logicalDevice = _ctx.getLogicDevice();
     // lateral for filepath in modern c++
     const auto shadersPath = getAssetPath();
     const auto vertexShaderPath = shadersPath + "/indirectDraw.vert";
     const auto fragShaderPath = shadersPath + "/indirectDraw.frag";
+    log(Level::Info, "vertexShaderPath: ", vertexShaderPath);
+    log(Level::Info, "fragShaderPath: ", fragShaderPath);
     _vsShaderModule = createShaderModule(
         logicalDevice,
         vertexShaderPath,
@@ -523,6 +530,7 @@ void VkApplication::createShaderModules()
         fragShaderPath,
         "main",
         "indirectDraw.frag");
+    log(Level::Info, "<--initDefaultCommandBuffers");
 }
 
 void VkApplication::createGraphicsPipeline()
@@ -579,7 +587,9 @@ void VkApplication::recordCommandBuffer(
     uint32_t swapChainImageIndex)
 {
     auto swapChainExtent = _ctx.getSwapChainExtent();
+    const auto tracyCtx = _ctx.getTracyContext();
 
+    TracyPlot("Swapchain image index", (int64_t)swapChainImageIndex);
     // Begin Render Pass, only 1 render pass
     constexpr VkClearValue clearColor{0.0f, 0.0f, 0.0f, 0.0f};
     VkRenderPassBeginInfo renderPassInfo{};
@@ -643,13 +653,18 @@ void VkApplication::recordCommandBuffer(
     // with gpu culling pass
     const auto culledIDRHandle = std::get<0>(this->_cullFustrum->getCulledIDR());
     const auto culledIDRCountHandle = std::get<0>(this->_cullFustrum->getCulledIDRCount());
-    vkCmdDrawIndexedIndirectCount(
-        commandBuffer,
-        culledIDRHandle, 0,
-        culledIDRCountHandle, 0,
-        _numMeshes, sizeof(IndirectDrawForVulkan));
+    {
+        // extra scope as required by TracyVkZone
+        TracyVkZone(tracyCtx, commandBuffer, "main draw pass");
+        vkCmdDrawIndexedIndirectCount(
+            commandBuffer,
+            culledIDRHandle, 0,
+            culledIDRCountHandle, 0,
+            _numMeshes, sizeof(IndirectDrawForVulkan));
+    }
 
     vkCmdEndRenderPass(commandBuffer);
+    TracyVkCollect(tracyCtx, commandBuffer);
 }
 
 // void VkApplication::createPerFrameSyncObjects()

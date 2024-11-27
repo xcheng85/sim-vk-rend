@@ -10,6 +10,8 @@ VK_EXT_layer_settings
 ### unsupported device extensions (vendor and ray tracing)
 VK_NV_MESH_SHADER_EXTENSION_NAME
 
+### shader debug printf
+![image info](./cs_debug_printf.png)
 
 ## GPU profiling with Tracy Profiler
 

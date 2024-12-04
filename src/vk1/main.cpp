@@ -59,6 +59,7 @@ inline const std::set<std::string> &getInstanceExtensions()
 #endif /*VK_USE_PLATFORM_WIN32_KHR*/
         "VK_EXT_debug_report",
         // "VK_NV_external_memory_capabilities",
+        // VK_KHR_get_physical_device_properties2 required for dynamic rendering feature
         "VK_KHR_get_physical_device_properties2",
         //"VK_EXT_validation_flags", //deprecated by VK_EXT_layer_settings
         "VK_KHR_device_group_creation",

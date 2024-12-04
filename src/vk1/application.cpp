@@ -588,9 +588,72 @@ void VkApplication::recordCommandBuffer(
 {
     auto swapChainExtent = _ctx.getSwapChainExtent();
     const auto tracyCtx = _ctx.getTracyContext();
-
+    const auto swapchainImages = _ctx.getSwapChainImages();
+    const auto swapchainImageViews = _ctx.getSwapChainImageViews();
     TracyPlot("Swapchain image index", (int64_t)swapChainImageIndex);
     // Begin Render Pass, only 1 render pass
+
+    // dynamic rendering implementation extra image memory barrier setup
+
+    // answer the following questions
+    // VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT: output merger (after blending)
+    // ignore the src and dst queue family index config since it is within the same queue
+    // uint32_t                   srcQueueFamilyIndex;
+    // uint32_t                   dstQueueFamilyIndex;
+
+    // VkPipelineStageFlags2      srcStageMask; VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+    // VkAccessFlags2             srcAccessMask;   VK_ACCESS_NONE
+    // VkPipelineStageFlags2      dstStageMask; VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+    // VkAccessFlags2             dstAccessMask;  VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT (specifies write access during stage: )
+    // VkImageLayout              oldLayout; VK_IMAGE_LAYOUT_UNDEFINED
+    // VkImageLayout              newLayout; VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL
+    // ignore
+    // uint32_t                   srcQueueFamilyIndex;
+    // uint32_t                   dstQueueFamilyIndex;
+
+    // swapchain image
+    // VkImage                    image;
+    // VkImageSubresourceRange    subresourceRange;
+
+#ifdef VK_DYNAMIC_RENDERING
+    // v1.3 dynamic rendering
+    VkImageMemoryBarrier2 acquireBarrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .srcAccessMask = VK_ACCESS_NONE,
+        .dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, // it is for renderpass render into swapchain image
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .image = swapchainImages[swapChainImageIndex],
+        .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
+    VkDependencyInfo dependencyInfo{
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .imageMemoryBarrierCount = 1,
+        .pImageMemoryBarriers = &acquireBarrier,
+    };
+    vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+
+    // specific struct to dynamic rendering
+    VkRenderingAttachmentInfo colorAttachment{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+    colorAttachment.imageView = swapchainImageViews[swapChainImageIndex];
+    colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    // similar to what desc configed for creating renderPass
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.clearValue.color = {0.0f, 0.0f, 0.0f, 0.0f};
+
+    VkRenderingInfo renderingInfo{VK_STRUCTURE_TYPE_RENDERING_INFO_KHR};
+    renderingInfo.renderArea = {0, 0, swapChainExtent.width, swapChainExtent.height};
+    renderingInfo.layerCount = 1;
+    renderingInfo.colorAttachmentCount = 1;
+    renderingInfo.pColorAttachments = &colorAttachment;
+
+    // Start a dynamic rendering section
+    vkCmdBeginRendering(commandBuffer, &renderingInfo);
+
+#endif
+// prior to vk1.3 without using dynamic rendering (which exclude renderpass and framebuffer)
+#ifndef VK_DYNAMIC_RENDERING
     constexpr VkClearValue clearColor{0.0f, 0.0f, 0.0f, 0.0f};
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -602,7 +665,7 @@ void VkApplication::recordCommandBuffer(
     renderPassInfo.clearValueCount = 1;
     renderPassInfo.pClearValues = &clearColor;
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
+#endif
     // Dynamic States (when create the graphics pipeline, they are not specified)
     VkViewport viewport{};
     viewport.width = (float)swapChainExtent.width;
@@ -663,7 +726,12 @@ void VkApplication::recordCommandBuffer(
             _numMeshes, sizeof(IndirectDrawForVulkan));
     }
 
+#if defined(VK_DYNAMIC_RENDERING)
+    vkCmdEndRendering(commandBuffer);
+#else
     vkCmdEndRenderPass(commandBuffer);
+#endif
+
     TracyVkCollect(tracyCtx, commandBuffer);
 }
 

@@ -31,7 +31,6 @@
 #include <numeric>
 #include <filesystem> // for shader
 
-
 // must ahead of <vk_mem_alloc.h>, or else it will crash on vk functions
 #ifndef __ANDROID__
 #define VK_NO_PROTOTYPES // for volk
@@ -167,7 +166,6 @@ public:
         uint32_t count,
         uint32_t inflightCount,
         VkFenceCreateFlags flags);
-        
 
     void BeginRecordCommandBuffer(CommandBufferEntity &cmdBuffer);
     void EndRecordCommandBuffer(CommandBufferEntity &cmdBuffer);
@@ -322,6 +320,7 @@ public:
     VkExtent2D getSwapChainExtent() const;
 
     // per-frame rendering op
+    const std::vector<VkImage> &getSwapChainImages() const;
     const std::vector<VkImageView> &getSwapChainImageViews() const;
     // legacy sync io (still needs graphics)
     const CommandBufferEntity &getCommandBufferForIO() const;

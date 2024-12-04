@@ -143,7 +143,7 @@ private:
     std::string _model;
 
     // ownership of resource
-    std::vector<VkImageView> _swapChainImageViews;
+    //std::vector<VkImageView> _swapChainImageViews;
     // fbo for swapchain
     std::vector<VkFramebuffer> _swapChainFramebuffers;
 

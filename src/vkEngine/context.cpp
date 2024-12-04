@@ -326,6 +326,11 @@ public:
         return _swapChainExtent;
     }
 
+    inline const auto &getSwapChainImages() const
+    {
+        return _swapChainImages;
+    }
+
     inline const auto &getSwapChainImageViews() const
     {
         return _swapChainImageViews;
@@ -1014,6 +1019,7 @@ private:
     VkColorSpaceKHR _colorspace{VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
     VkExtent2D _swapChainExtent;
     VkSwapchainKHR _swapChain{VK_NULL_HANDLE};
+    std::vector<VkImage> _swapChainImages;
     std::vector<VkImageView> _swapChainImageViews;
     // fbo for swapchain
     std::vector<VkFramebuffer> _swapChainFramebuffers;
@@ -1072,7 +1078,7 @@ void VkContext::Impl::selectFeatures()
     sEnable12Features.bufferDeviceAddressCaptureReplay = VK_TRUE;
     sEnable12Features.drawIndirectCount = VK_TRUE;
     sEnable12Features.shaderFloat16 = VK_TRUE;
-
+    // dynamic rendering feature
     sEnable13Features.dynamicRendering = VK_TRUE;
     sEnable13Features.maintenance4 = VK_TRUE;
     sEnable13Features.synchronization2 = VK_TRUE;
@@ -1368,8 +1374,9 @@ void VkContext::Impl::createSwapChainImageView()
 {
     uint32_t imageCount{0};
     VK_CHECK(vkGetSwapchainImagesKHR(_logicalDevice, _swapChain, &imageCount, nullptr));
-    std::vector<VkImage> images(imageCount);
-    VK_CHECK(vkGetSwapchainImagesKHR(_logicalDevice, _swapChain, &imageCount, images.data()));
+    // reserve won't work
+    _swapChainImages.resize(imageCount);
+    VK_CHECK(vkGetSwapchainImagesKHR(_logicalDevice, _swapChain, &imageCount, _swapChainImages.data()));
     _swapChainImageViews.resize(imageCount);
 
     VkImageViewCreateInfo imageView{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
@@ -1394,7 +1401,7 @@ void VkContext::Impl::createSwapChainImageView()
 
     for (size_t i = 0; i < imageCount; ++i)
     {
-        imageView.image = images[i];
+        imageView.image = _swapChainImages[i];
         VK_CHECK(vkCreateImageView(_logicalDevice, &imageView, nullptr, &_swapChainImageViews[i]));
         setCorrlationId(_swapChainImageViews[i], _logicalDevice, VK_OBJECT_TYPE_IMAGE_VIEW,
                         "Swap Chain Image view: " + std::to_string(i));
@@ -3057,6 +3064,11 @@ VkSwapchainKHR VkContext::getSwapChain() const
 VkExtent2D VkContext::getSwapChainExtent() const
 {
     return _pimpl->getSwapChainExtent();
+}
+
+const std::vector<VkImage> &VkContext::getSwapChainImages() const
+{
+    return _pimpl->getSwapChainImages();
 }
 
 const std::vector<VkImageView> &VkContext::getSwapChainImageViews() const

@@ -176,7 +176,7 @@ public:
         const std::unordered_map<VkDescriptorType, uint32_t> &dsBudgets,
         uint32_t dsCap);
 
-    std::tuple<VkPipeline, VkPipelineLayout> createGraphicsPipeline(
+    std::tuple<std::unordered_map<GRAPHICS_PIPELINE_SEMANTIC, VkPipeline>, VkPipelineLayout> createGraphicsPipeline(
         const std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, const char *, const VkSpecializationInfo *>> &shaderModuleEntities,
         const std::vector<VkDescriptorSetLayout> &dsLayouts,
         const std::vector<VkPushConstantRange> &pushConstants,
@@ -1989,14 +1989,13 @@ VkDescriptorPool VkContext::Impl::createDescriptorSetPool(
     return descriptorSetPool;
 }
 
-std::tuple<VkPipeline, VkPipelineLayout> VkContext::Impl::createGraphicsPipeline(
+std::tuple<std::unordered_map<GRAPHICS_PIPELINE_SEMANTIC, VkPipeline>, VkPipelineLayout> VkContext::Impl::createGraphicsPipeline(
     const std::unordered_map<VkShaderStageFlagBits,
                              std::tuple<VkShaderModule, const char *, const VkSpecializationInfo *>> &shaderModuleEntities,
     const std::vector<VkDescriptorSetLayout> &dsLayouts,
     const std::vector<VkPushConstantRange> &pushConstants,
     const VkRenderPass &renderPass)
 {
-    std::tuple<VkPipeline, VkPipelineLayout> res;
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
 
@@ -2125,6 +2124,7 @@ std::tuple<VkPipeline, VkPipelineLayout> VkContext::Impl::createGraphicsPipeline
 
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.flags = VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT;
     pipelineInfo.stageCount = shaderStages.size();
     pipelineInfo.pStages = shaderStages.data();
     // with vao
@@ -2144,8 +2144,20 @@ std::tuple<VkPipeline, VkPipelineLayout> VkContext::Impl::createGraphicsPipeline
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
     pipelineInfo.basePipelineIndex = -1;              // Optional
 
+    std::unordered_map<GRAPHICS_PIPELINE_SEMANTIC, VkPipeline> lk;
+
     VK_CHECK(vkCreateGraphicsPipelines(_logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline));
-    return make_tuple(graphicsPipeline, pipelineLayout);
+    lk.insert(std::make_pair(GRAPHICS_PIPELINE_SEMANTIC::NORMAL, graphicsPipeline));
+
+    pipelineInfo.flags = VK_PIPELINE_CREATE_DERIVATIVE_BIT;
+    pipelineInfo.basePipelineHandle = graphicsPipeline;
+    pipelineInfo.basePipelineIndex = -1;
+    //pipelineInfo.pRasterizationState = &rasterizer; is a pointer
+    rasterizer.polygonMode = VK_POLYGON_MODE_LINE;
+    VkPipeline graphicsPipelineWireframe;
+    VK_CHECK(vkCreateGraphicsPipelines(_logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipelineWireframe));
+    lk.insert(std::make_pair(GRAPHICS_PIPELINE_SEMANTIC::WIREFRAME, graphicsPipelineWireframe));
+    return make_tuple(lk, pipelineLayout);
 }
 
 // only need shader stage and pipelinelayout
@@ -2885,7 +2897,7 @@ VkDescriptorPool VkContext::createDescriptorSetPool(
     return _pimpl->createDescriptorSetPool(dsBudgets, dsCap);
 }
 
-std::tuple<VkPipeline, VkPipelineLayout> VkContext::createGraphicsPipeline(
+std::tuple<std::unordered_map<GRAPHICS_PIPELINE_SEMANTIC, VkPipeline>, VkPipelineLayout> VkContext::createGraphicsPipeline(
     std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule, const char *, const VkSpecializationInfo *>> vsShaderEntities,
     const std::vector<VkDescriptorSetLayout> &dsLayouts,
     const std::vector<VkPushConstantRange> &pushConstants,

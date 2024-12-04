@@ -164,7 +164,7 @@ private:
     std::vector<BufferEntity> _uniformBuffers;
 
     // graphics pipeline
-    std::tuple<VkPipeline, VkPipelineLayout> _graphicsPipelineEntity;
+    std::tuple<std::unordered_map<GRAPHICS_PIPELINE_SEMANTIC, VkPipeline>, VkPipelineLayout> _graphicsPipelineEntity;
 
     // vao, vbo, index buffer
     uint32_t _indexCount{0};

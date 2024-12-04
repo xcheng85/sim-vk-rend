@@ -150,7 +150,11 @@ void VkApplication::teardown()
         vmaDestroyBuffer(vmaAllocator, std::get<0>(_uniformBuffers[i]), std::get<1>(_uniformBuffers[i]));
     }
 
-    vkDestroyPipeline(logicalDevice, std::get<0>(_graphicsPipelineEntity), nullptr);
+    for (const auto &[pipelineType, pipeline] : std::get<0>(_graphicsPipelineEntity))
+    {
+        vkDestroyPipeline(logicalDevice, pipeline, nullptr);
+    }
+
     vkDestroyPipelineLayout(logicalDevice, std::get<1>(_graphicsPipelineEntity), nullptr);
     vkDestroyRenderPass(logicalDevice, _swapChainRenderPass, nullptr);
 
@@ -680,9 +684,9 @@ void VkApplication::recordCommandBuffer(
     vkCmdSetDepthTestEnable(commandBuffer, VK_TRUE);
 
     // apply graphics pipeline to the cmd
-    auto graphicsPipeline = std::get<0>(_graphicsPipelineEntity);
+    auto graphicsPipelineLookUpTable = std::get<0>(_graphicsPipelineEntity);
     auto graphicsPipelineLayout = std::get<1>(_graphicsPipelineEntity);
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipelineLookUpTable[GRAPHICS_PIPELINE_SEMANTIC::WIREFRAME]);
     // resource and ds to the shaders of this pipeline
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             graphicsPipelineLayout, 0, 1,

@@ -121,6 +121,13 @@ enum AS_ENTITY_UID : int
     DEVICE_ADDRESS
 };
 
+enum GRAPHICS_PIPELINE_SEMANTIC : int
+{
+    NORMAL = 0,
+    WIREFRAME,
+    GRAPHICS_PIPELINE_SEMANTIC_SIZE
+};
+
 class VkContext
 {
     class Impl;
@@ -226,7 +233,7 @@ public:
         const std::unordered_map<VkDescriptorType, uint32_t> &dsBudgets,
         uint32_t dsCap = 100);
 
-    std::tuple<VkPipeline, VkPipelineLayout> createGraphicsPipeline(
+    std::tuple<std::unordered_map<GRAPHICS_PIPELINE_SEMANTIC, VkPipeline>, VkPipelineLayout> createGraphicsPipeline(
         std::unordered_map<VkShaderStageFlagBits, std::tuple<VkShaderModule,
                                                              const char *,
                                                              // std::string, /** dangling pointer issues */

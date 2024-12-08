@@ -113,6 +113,13 @@ struct UniformDataDef1
     float lodBias = 0.0f;
 };
 
+// for rendering same object with different model transformation
+// testing combo uniform buffer for performance perspective
+struct UniformDataDef2
+{
+    glm::mat4 model;
+};
+
 struct SpecializationDataDef1
 {
     uint32_t lightingModel{0};
@@ -249,4 +256,23 @@ inline Plane createPlaneFromPoints(const glm::vec3 &p1, const glm::vec3 &p2, con
     const auto n = calculatePlaneNormal(p1, p2, p3);
     const auto d = -glm::dot(n, p1);
     return Plane(n, d);
+}
+
+inline void *aligned_alloc(size_t size, size_t alignment)
+{
+    void *data = nullptr;
+#if defined(_MSC_VER) || defined(__MINGW32__)
+    data = _aligned_malloc(size, alignment);
+#else
+
+#endif
+    return data;
+}
+
+inline void aligned_free(void *data)
+{
+#if defined(_MSC_VER) || defined(__MINGW32__)
+    _aligned_free(data);
+#else
+#endif
 }

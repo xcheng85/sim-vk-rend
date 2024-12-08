@@ -229,7 +229,8 @@ public:
                 float distFromCenter = glm::dot(center, n) + p.w;
                 const bool shouldBeCulled = (distFromCenter <= -radiusEffective);
 
-                if (shouldBeCulled) {
+                if (shouldBeCulled)
+                {
                     log(Level::Info, "shouldBeCulled: ", shouldBeCulled);
                 }
             }
@@ -264,7 +265,13 @@ private:
             buffers.emplace_back(_ctx->createPersistentBuffer(
                 "Uniform Fustrum Buffer" + std::to_string(i),
                 numFramesInFlight * sizeof(Fustrum),
-                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT));
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                    VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                    VK_MEMORY_PROPERTY_HOST_CACHED_BIT));
         }
 
         _fustrumBuffers = std::make_tuple(buffers, numFramesInFlight);

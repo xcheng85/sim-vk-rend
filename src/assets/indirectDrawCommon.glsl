@@ -23,4 +23,8 @@ layout(set = 4, binding = 0) readonly buffer MaterialBuffer {
     Material materials[];
 };
 
+layout (set = 5, binding = 0) uniform UboObject {
+    mat4 world; 
+} uboObject;
+
 #endif

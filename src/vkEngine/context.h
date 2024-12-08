@@ -180,7 +180,10 @@ public:
     BufferEntity createPersistentBuffer(
         const std::string &name,
         VkDeviceSize bufferSizeInBytes,
-        VkBufferUsageFlags bufferUsageFlag);
+        VkBufferUsageFlags bufferUsageFlag,
+        VkMemoryPropertyFlags requiredMemoryProperties,
+        VkMemoryPropertyFlags preferredMemoryProperties,
+        bool mapping = true);
 
     BufferEntity createStagingBuffer(
         const std::string &name,

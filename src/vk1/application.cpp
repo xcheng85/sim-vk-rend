@@ -1,4 +1,5 @@
 #include <format>
+#include <random>
 #include <application.h>
 #include <window.h>
 #include <context.h>
@@ -16,6 +17,8 @@
 // triple-buffer
 static constexpr int MAX_FRAMES_IN_FLIGHT = 3;
 static constexpr int MAX_DESCRIPTOR_SETS = 1 * MAX_FRAMES_IN_FLIGHT + 1 + 4;
+static constexpr int NUM_OBJECTS = 5;
+
 // static constexpr int MAX_DESCRIPTOR_SETS = 1000;
 //  Default fence timeout in nanoseconds
 #define DEFAULT_FENCE_TIMEOUT 100000000000
@@ -149,6 +152,8 @@ void VkApplication::teardown()
         // vmaUnmapMemory(_vmaAllocator, _vmaAllocations[i]);
         vmaDestroyBuffer(vmaAllocator, std::get<0>(_uniformBuffers[i]), std::get<1>(_uniformBuffers[i]));
     }
+    vmaDestroyBuffer(vmaAllocator, std::get<0>(_objectDynamicUniformBuffer), std::get<1>(_objectDynamicUniformBuffer));
+    _aligned_free(_comboWorldTransformation);
 
     for (const auto &[pipelineType, pipeline] : std::get<0>(_graphicsPipelineEntity))
     {
@@ -261,6 +266,17 @@ void VkApplication::createDescriptorSetLayout()
     setBindings[DESC_LAYOUT_SEMANTIC::COMBO_MAT][0].descriptorCount = 1;
     setBindings[DESC_LAYOUT_SEMANTIC::COMBO_MAT][0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
+    // refer to the section in indirectDrawCommon.glsl
+    // layout (set = 5, binding = 0) uniform UboObject {
+    //     mat4 world;
+    // } uboObject;
+
+    setBindings[DESC_LAYOUT_SEMANTIC::OBJECT_DYNAMIC_UBO].resize(1);
+    setBindings[DESC_LAYOUT_SEMANTIC::OBJECT_DYNAMIC_UBO][0].binding = 0;
+    setBindings[DESC_LAYOUT_SEMANTIC::OBJECT_DYNAMIC_UBO][0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    setBindings[DESC_LAYOUT_SEMANTIC::OBJECT_DYNAMIC_UBO][0].descriptorCount = 1;
+    setBindings[DESC_LAYOUT_SEMANTIC::OBJECT_DYNAMIC_UBO][0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
     _descriptorSetLayouts = _ctx.createDescriptorSetLayout(setBindings);
 }
 
@@ -270,6 +286,7 @@ void VkApplication::createDescriptorPool()
     // for ray tracing
     _descriptorSetPool = _ctx.createDescriptorSetPool({
                                                           {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, MAX_FRAMES_IN_FLIGHT},
+                                                          {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10},
                                                           {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10},
                                                           {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 10},
                                                           {VK_DESCRIPTOR_TYPE_SAMPLER, 10},
@@ -280,6 +297,7 @@ void VkApplication::createDescriptorPool()
     // const auto logicalDevice = _ctx.getLogicDevice();
     // // here I need 4 type of descriptors
     // // layout (set = 0, binding = 0) uniform UBO
+    // // layout (set = 0, binding = 1) uniform UboObject
     // // layout (set = 1, binding = 0) readonly buffer VertexBuffer;
     // // layout (set = 2, binding = 0) readonly buffer IndirectDraw;
     // // layout(set = 3, binding = 0) uniform texture2D BindlessImage2D[];
@@ -294,18 +312,19 @@ void VkApplication::allocateDescriptorSets()
                                                    MAX_FRAMES_IN_FLIGHT},
                                                   {&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::COMBO_VERT],
                                                    1},
-
                                                   {&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::COMBO_IDR],
                                                    1},
-
                                                   {&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::TEX_SAMP],
                                                    1},
                                                   {&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::COMBO_MAT],
+                                                   1},
+                                                  {&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::OBJECT_DYNAMIC_UBO],
                                                    1}});
 }
 
 void VkApplication::createUniformBuffers()
 {
+    // uniform global granularity, camera, etc.
     VkDeviceSize bufferSize = sizeof(UniformDataDef1);
     _uniformBuffers.reserve(MAX_FRAMES_IN_FLIGHT);
 
@@ -315,7 +334,44 @@ void VkApplication::createUniformBuffers()
         _uniformBuffers.emplace_back(_ctx.createPersistentBuffer(
             "Uniform buffer " + std::to_string(i),
             bufferSize,
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT));
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                VK_MEMORY_PROPERTY_HOST_CACHED_BIT));
+    }
+
+    // uniform object granularity
+    size_t minUboAlignment = 64;
+    _dynamicAlignment = sizeof(glm::mat4);
+    if (minUboAlignment > 0)
+    {
+        _dynamicAlignment = (_dynamicAlignment + minUboAlignment - 1) & ~(minUboAlignment - 1);
+    }
+
+    bufferSize = NUM_OBJECTS * _dynamicAlignment;
+    log(Level::Info, "dynamicAlignment: ", _dynamicAlignment);
+
+    _comboWorldTransformation = (glm::mat4 *)aligned_alloc(bufferSize, _dynamicAlignment);
+
+    // Uniform buffer object with per-object matrices
+    _objectDynamicUniformBuffer = _ctx.createPersistentBuffer(
+        "Object Dynamic(combo) buffer",
+        bufferSize,
+        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+
+    // set up
+
+    std::default_random_engine rndEngine((unsigned)time(nullptr));
+    std::normal_distribution<float> rndDist(-1.0f, 1.0f);
+    _rotations.resize(NUM_OBJECTS);
+    for (uint32_t i = 0; i < NUM_OBJECTS; i++)
+    {
+        _rotations[i] = glm::vec3(rndDist(rndEngine), rndDist(rndEngine), rndDist(rndEngine)) * 2.0f * (float)M_PI;
     }
 }
 
@@ -325,8 +381,8 @@ void VkApplication::updateUniformBuffer(int currentFrameId)
     auto logicalDevice = _ctx.getLogicDevice();
     auto swapChainExtent = _ctx.getSwapChainExtent();
     auto vmaAllocator = _ctx.getVmaAllocator();
-    auto vmaAllocation = std::get<1>(_uniformBuffers[currentFrameId]);
-    auto mappedMemory = std::get<3>(_uniformBuffers[currentFrameId]);
+    auto vmaAllocation = std::get<BUFFER_ENTITY_UID::VMA_ALLOCATION>(_uniformBuffers[currentFrameId]);
+    auto mappedMemory = std::get<BUFFER_ENTITY_UID::MAPPING_ADDRESS>(_uniformBuffers[currentFrameId]);
 
     auto view = _camera.viewTransformLH();
     auto verticalFov = _camera.verticalFov();
@@ -350,9 +406,13 @@ void VkApplication::updateUniformBuffer(int currentFrameId)
     // ubo.projection = persPrj;
     // ubo.mvp = mvp;
 
+    // 1. for global ubo
     UniformDataDef1 ubo;
     ubo.viewPos = _camera.viewPos();
-    ubo.mvp = proj * view;
+
+    glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(1.f));
+    // model = glm::rotate(model, glm::radians(45.0f), glm::vec3(1.0f, 1.0f, 0.0f));
+    ubo.mvp = proj * view * model;
 
     if (mappedMemory)
     {
@@ -366,6 +426,45 @@ void VkApplication::updateUniformBuffer(int currentFrameId)
         memcpy(mappedMemory, &ubo, sizeof(UniformDataDef1));
         // memcpy(mappedMemory, &ubo, sizeof(ubo));
         vmaUnmapMemory(vmaAllocator, vmaAllocation);
+    }
+
+    // 2. for per-object ubo
+    for (int i = 0; i < _rotations.size(); i++)
+    {
+        glm::mat4 *modelMat = (glm::mat4 *)(((uint64_t)_comboWorldTransformation + (i * _dynamicAlignment)));
+        glm::mat4 m4(1.0f); // construct identity matrix
+                            // three concatanated rotation
+        *modelMat = m4;
+        *modelMat = glm::rotate(*modelMat, _rotations[i].x, glm::vec3(1.0f, 0.0f, 0.0f));
+        // *modelMat = glm::rotate(*modelMat, _rotations[i].y, glm::vec3(0.0f, 1.0f, 0.0f));
+        // *modelMat = glm::rotate(*modelMat, _rotations[i].z, glm::vec3(0.0f, 0.0f, 1.0f));
+
+        // already persistent mapped
+        auto mappedMemory = std::get<BUFFER_ENTITY_UID::MAPPING_ADDRESS>(_objectDynamicUniformBuffer);
+        auto bufferSize = std::get<BUFFER_ENTITY_UID::BUFFER_SIZE>(_objectDynamicUniformBuffer);
+        auto vmaAllocation = std::get<BUFFER_ENTITY_UID::VMA_ALLOCATION>(_objectDynamicUniformBuffer);
+        ASSERT(mappedMemory, "_objectDynamicUniformBuffer should be persistent-mapped");
+        memcpy(mappedMemory, _comboWorldTransformation, bufferSize);
+        // If a memory object does not have the VK_MEMORY_PROPERTY_HOST_COHERENT_BIT property,
+        // then vkFlushMappedMemoryRanges must be called in order to guarantee that writes to the memory object from the host are made available to the host domain,
+        // where they can be further made available to the device domain via a domain operation. Similarly, vkInvalidateMappedMemoryRanges
+        // must be called to guarantee that writes which are available to the host domain are made visible to host operations.
+        // If the memory object does have the VK_MEMORY_PROPERTY_HOST_COHERENT_BIT property flag,
+        // writes to the memory object from the host are automatically made available to the host domain.
+        // Similarly, writes made available to the host domain are automatically made visible to the host.
+
+        // From vma layer
+        // Memory in Vulkan doesn't need to be unmapped before using it on GPU,
+        // but unless a memory types has `VK_MEMORY_PROPERTY_HOST_COHERENT_BIT` flag set,
+        // you need to manually **invalidate** cache before reading of mapped pointer
+        // and **flush** cache after writing to mapped pointer.
+        // Map/unmap operations don't do that automatically.
+        // Vulkan provides following functions for this purpose `vkFlushMappedMemoryRanges()`,
+        // `vkInvalidateMappedMemoryRanges()`, but this library provides more convenient
+        // functions that refer to given allocation object: vmaFlushAllocation(),
+        // vmaInvalidateAllocation(),
+        // or multiple objects at once: vmaFlushAllocations(), vmaInvalidateAllocations().
+        VK_CHECK(vmaFlushAllocation(vmaAllocator, vmaAllocation, 0, bufferSize));
     }
 }
 
@@ -484,6 +583,16 @@ void VkApplication::bindResourceToDescriptorSets()
     // vkUpdateDescriptorSets(logicalDevice, _writeDescriptorSetBundle.size(),
     //                        _writeDescriptorSetBundle.data(), 0,
     //                        nullptr);
+    {
+        const auto dstSets = _descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::OBJECT_DYNAMIC_UBO]];
+        _ctx.bindBufferToDescriptorSet(
+            std::get<BUFFER_ENTITY_UID::BUFFER>(_objectDynamicUniformBuffer),
+            0,
+            std::get<BUFFER_ENTITY_UID::BUFFER_SIZE>(_objectDynamicUniformBuffer),
+            dstSets[0],
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+            0);
+    }
 }
 
 // // load shader spirv
@@ -693,6 +802,7 @@ void VkApplication::recordCommandBuffer(
                             &_descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::UBO]][currentFrameId],
                             0,
                             nullptr);
+
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             graphicsPipelineLayout, 1, 1,
                             &_descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::COMBO_VERT]][0],
@@ -711,24 +821,38 @@ void VkApplication::recordCommandBuffer(
                             graphicsPipelineLayout, 4, 1,
                             &_descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::COMBO_MAT]][0],
                             0, nullptr);
-    vkCmdBindIndexBuffer(commandBuffer, std::get<0>(_compositeIB), 0, VK_INDEX_TYPE_UINT32);
+
+    const auto dstSets = _descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::OBJECT_DYNAMIC_UBO]];
+    for (uint32_t i = 0; i < NUM_OBJECTS; i++)
+    {
+        // One dynamic offset per dynamic descriptor to offset into the ubo containing all model matrices
+        uint32_t dynamicOffset = i * static_cast<uint32_t>(_dynamicAlignment);
+        // Bind the descriptor set for rendering a mesh using the dynamic offset
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipelineLayout,
+                                5, 1, &dstSets[0], 1, &dynamicOffset);
+
+        vkCmdBindIndexBuffer(commandBuffer, std::get<0>(_compositeIB), 0, VK_INDEX_TYPE_UINT32);
+
+        // with gpu culling pass
+        const auto culledIDRHandle = std::get<0>(this->_cullFustrum->getCulledIDR());
+        const auto culledIDRCountHandle = std::get<0>(this->_cullFustrum->getCulledIDRCount());
+        {
+            // extra scope as required by TracyVkZone
+            TracyVkZone(tracyCtx, commandBuffer, "main draw pass");
+            vkCmdDrawIndexedIndirectCount(
+                commandBuffer,
+                culledIDRHandle, 0,
+                culledIDRCountHandle, 0,
+                _numMeshes, sizeof(IndirectDrawForVulkan));
+        }
+    }
+
     // how many draws are dependent on how many meshes in the scene.
     // without fustrum culling
     // vkCmdDrawIndexedIndirect(commandBuffer, std::get<0>(_indirectDrawB), 0, _numMeshes,
     //                          sizeof(IndirectDrawForVulkan));
 
-    // with gpu culling pass
-    const auto culledIDRHandle = std::get<0>(this->_cullFustrum->getCulledIDR());
-    const auto culledIDRCountHandle = std::get<0>(this->_cullFustrum->getCulledIDRCount());
-    {
-        // extra scope as required by TracyVkZone
-        TracyVkZone(tracyCtx, commandBuffer, "main draw pass");
-        vkCmdDrawIndexedIndirectCount(
-            commandBuffer,
-            culledIDRHandle, 0,
-            culledIDRCountHandle, 0,
-            _numMeshes, sizeof(IndirectDrawForVulkan));
-    }
+
 
 #if defined(VK_DYNAMIC_RENDERING)
     vkCmdEndRendering(commandBuffer);

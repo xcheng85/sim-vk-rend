@@ -138,7 +138,12 @@ public:
     BufferEntity createPersistentBuffer(
         const std::string &name,
         VkDeviceSize bufferSizeInBytes,
-        VkBufferUsageFlags bufferUsageFlag);
+        VkBufferUsageFlags bufferUsageFlag,
+        // The following two covers different use case: 1. normal uniform buffer
+        // 2. combo dynamic updatable (subrange) uniform buffer
+        VkMemoryPropertyFlags requiredMemoryProperties,
+        VkMemoryPropertyFlags preferredMemoryProperties,
+        bool mapping);
 
     BufferEntity createStagingBuffer(
         const std::string &name,
@@ -710,6 +715,9 @@ private:
             // physicalDevicesProp.pNext = &subgroupProp;
 
             vkGetPhysicalDeviceProperties2(_selectedPhysicalDevice, &_physicalDevicesProp2);
+            //  When a descriptor of type VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER or VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC is updated, the offset must be an integer multiple of this limit
+            //
+            log(Level::Info, "minUniformBufferOffsetAlignment: ", _physicalDevicesProp2.properties.limits.minUniformBufferOffsetAlignment);
 
             // Get memory properties
             VkPhysicalDeviceMemoryProperties2 memoryProperties_ = {
@@ -1740,7 +1748,10 @@ BufferEntity VkContext::Impl::createBuffer(
 BufferEntity VkContext::Impl::createPersistentBuffer(
     const std::string &name,
     VkDeviceSize bufferSizeInBytes,
-    VkBufferUsageFlags bufferUsageFlag)
+    VkBufferUsageFlags bufferUsageFlag,
+    VkMemoryPropertyFlags requiredMemoryProperties,
+    VkMemoryPropertyFlags preferredMemoryProperties,
+    bool mapping)
 {
     log(Level::Info, "createPersistentBuffer:", std::this_thread::get_id());
     return createBuffer(
@@ -1749,14 +1760,16 @@ BufferEntity VkContext::Impl::createPersistentBuffer(
         bufferUsageFlag,
         VK_SHARING_MODE_EXCLUSIVE,
         0,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-            VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-            VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+        requiredMemoryProperties,
+        preferredMemoryProperties,
+        // VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+        //     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+        //     VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+        // VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+        //     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+        //     VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
         VMA_MEMORY_USAGE_CPU_TO_GPU,
-        false);
+        mapping);
 }
 
 BufferEntity VkContext::Impl::createStagingBuffer(const std::string &name, VkDeviceSize bufferSizeInBytes)
@@ -2152,7 +2165,7 @@ std::tuple<std::unordered_map<GRAPHICS_PIPELINE_SEMANTIC, VkPipeline>, VkPipelin
     pipelineInfo.flags = VK_PIPELINE_CREATE_DERIVATIVE_BIT;
     pipelineInfo.basePipelineHandle = graphicsPipeline;
     pipelineInfo.basePipelineIndex = -1;
-    //pipelineInfo.pRasterizationState = &rasterizer; is a pointer
+    // pipelineInfo.pRasterizationState = &rasterizer; is a pointer
     rasterizer.polygonMode = VK_POLYGON_MODE_LINE;
     VkPipeline graphicsPipelineWireframe;
     VK_CHECK(vkCreateGraphicsPipelines(_logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipelineWireframe));
@@ -2810,9 +2823,13 @@ std::vector<CommandBufferEntity> VkContext::createTransferCommandBuffers(
 BufferEntity VkContext::createPersistentBuffer(
     const std::string &name,
     VkDeviceSize bufferSizeInBytes,
-    VkBufferUsageFlags bufferUsageFlag)
+    VkBufferUsageFlags bufferUsageFlag,
+    VkMemoryPropertyFlags requiredMemoryProperties,
+    VkMemoryPropertyFlags preferredMemoryProperties,
+    bool mapping)
 {
-    return _pimpl->createPersistentBuffer(name, bufferSizeInBytes, bufferUsageFlag);
+    return _pimpl->createPersistentBuffer(name, bufferSizeInBytes, bufferUsageFlag, requiredMemoryProperties, 
+    preferredMemoryProperties, mapping);
 }
 
 BufferEntity VkContext::createStagingBuffer(

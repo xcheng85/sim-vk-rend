@@ -82,6 +82,7 @@ class VkApplication
         COMBO_IDR,
         TEX_SAMP,
         COMBO_MAT,
+        OBJECT_DYNAMIC_UBO,
         DESC_LAYOUT_SEMANTIC_SIZE
     };
 
@@ -143,7 +144,7 @@ private:
     std::string _model;
 
     // ownership of resource
-    //std::vector<VkImageView> _swapChainImageViews;
+    // std::vector<VkImageView> _swapChainImageViews;
     // fbo for swapchain
     std::vector<VkFramebuffer> _swapChainFramebuffers;
 
@@ -160,8 +161,16 @@ private:
     VkDescriptorPool _descriptorSetPool{VK_NULL_HANDLE};
     std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> _descriptorSets;
 
-    // resource
+    // uniforms at global granularity
     std::vector<BufferEntity> _uniformBuffers;
+    // uniforms at object-granularity: combo dynamic ubo
+    BufferEntity _objectDynamicUniformBuffer;
+    // host buffer for dynamic ubo
+    glm::mat4 *_comboWorldTransformation;
+    // different object has different world transformation
+    std::vector<glm::vec3> _rotations;
+    // combo ufo has alignment requirement
+    size_t _dynamicAlignment;
 
     // graphics pipeline
     std::tuple<std::unordered_map<GRAPHICS_PIPELINE_SEMANTIC, VkPipeline>, VkPipelineLayout> _graphicsPipelineEntity;
@@ -181,7 +190,7 @@ private:
     VkBuffer _stagingImageBuffer{VK_NULL_HANDLE};
 
     // glb scene
-    std::shared_ptr<Scene> _scene; 
+    std::shared_ptr<Scene> _scene;
     // a lot of stageBuffers
     std::vector<BufferEntity> _stagingVbForMesh;
     std::vector<BufferEntity> _stagingIbForMesh;

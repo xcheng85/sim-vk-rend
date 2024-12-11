@@ -27,4 +27,8 @@ layout (set = 5, binding = 0) uniform UboObject {
     mat4 world; 
 } uboObject;
 
+layout(push_constant) uniform PushConstants {
+	mat4 scale;
+} pushConstants;
+
 #endif

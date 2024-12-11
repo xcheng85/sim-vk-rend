@@ -23,5 +23,5 @@ void main() {
   outMeshId = indirectDraws[gl_DrawID].meshId;
   outMaterialId = vertex.materialId;
 
-  gl_Position = ubo.mvp * uboObject.world * vec4(vertex.posX, vertex.posY, vertex.posZ, 1.0f);
+  gl_Position = ubo.mvp * uboObject.world * pushConstants.scale * vec4(vertex.posX, vertex.posY, vertex.posZ, 1.0f);
 }

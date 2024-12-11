@@ -369,9 +369,11 @@ void VkApplication::createUniformBuffers()
     std::default_random_engine rndEngine((unsigned)time(nullptr));
     std::normal_distribution<float> rndDist(-1.0f, 1.0f);
     _rotations.resize(NUM_OBJECTS);
+    _scales.resize(NUM_OBJECTS);
     for (uint32_t i = 0; i < NUM_OBJECTS; i++)
     {
         _rotations[i] = glm::vec3(rndDist(rndEngine), rndDist(rndEngine), rndDist(rndEngine)) * 2.0f * (float)M_PI;
+        _scales[i] = glm::scale(glm::mat4(1.0f), glm::vec3(abs(rndDist(rndEngine)) * 5));
     }
 }
 
@@ -672,7 +674,12 @@ void VkApplication::createGraphicsPipeline()
          {VK_SHADER_STAGE_FRAGMENT_BIT,
           make_tuple(_fsShaderModule, entryPoint.c_str(), &specializationInfo)}},
         _descriptorSetLayouts,
-        {},
+        // for the scale push constant
+        {{
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .offset = 0,
+            .size = sizeof(glm::vec4) * 2,
+        }},
         _swapChainRenderPass);
 }
 
@@ -830,7 +837,11 @@ void VkApplication::recordCommandBuffer(
         // Bind the descriptor set for rendering a mesh using the dynamic offset
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipelineLayout,
                                 5, 1, &dstSets[0], 1, &dynamicOffset);
-
+        vkCmdPushConstants(commandBuffer, graphicsPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &_scales[i]);
+        // auto identity = glm::mat4(1.0f);
+        // // crash
+        // vkCmdPushConstants(commandBuffer, graphicsPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &identity);
+        
         vkCmdBindIndexBuffer(commandBuffer, std::get<0>(_compositeIB), 0, VK_INDEX_TYPE_UINT32);
 
         // with gpu culling pass
@@ -851,8 +862,6 @@ void VkApplication::recordCommandBuffer(
     // without fustrum culling
     // vkCmdDrawIndexedIndirect(commandBuffer, std::get<0>(_indirectDrawB), 0, _numMeshes,
     //                          sizeof(IndirectDrawForVulkan));
-
-
 
 #if defined(VK_DYNAMIC_RENDERING)
     vkCmdEndRendering(commandBuffer);

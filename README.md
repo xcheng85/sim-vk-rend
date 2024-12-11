@@ -1,6 +1,12 @@
 # sim-vk-rend
 
-## Frame debugger with renderdoc v1.25r
+## multi-threading + command buffer
+1. separate command pool per thread
+
+## dynamic rendering after v1.3
+
+
+## Frame debugger with renderdoc v1.25
 
 ### unsupported instance extensions
 VK_KHR_portability_enumeration
@@ -45,11 +51,18 @@ https://docs.vulkan.org/guide/latest/push_constants.html#pc-shader-code
 
 A small bank of values writable via the API and accessible in shaders. Push constants allow the application to set values used in shaders without creating buffers or modifying and binding descriptor sets for each update.
 
+From a shader perspective, push constant are similar to a uniform buffer
+
 ### update push constant
 
-vkCmdPushConstants
+1. VkPipelineLayoutCreateInfo's two fields: pushConstantRangeCount & pPushConstantRanges
 
-### Specialization Constants VS push constant
+2. update push constant: vkCmdPushConstants
+
+### Specialization Constants vs push constant
+Specialization Constants: massage upon shaders
+push constant: a descriptor set -less uniform data pass-in.
+
 specialization constants: are set before pipeline creation meaning these values are known during shader compilation,
 
 push constant: update at runtime (after shader compilation)
@@ -84,3 +97,37 @@ prjInverse
 
 ## dynamicRendering
 renderPass updates
+
+
+## Normal Uniform Buffer vs Dynamic Uniform Buffer
+
+### Dynamic
+1. desc: one combo shared
+2. benifits: minimizes the number of descriptor sets required and may help in optimizing memory writes.
+
+INFO:  GPU Used: NVIDIA GeForce RTX 4090 Laptop GPU Vendor: 4318 Device: 10071
+INFO: minUniformBufferOffsetAlignment: 64
+
+vkCmdBindDescriptorSets's param:    
+
+    uint32_t                                    dynamicOffsetCount,
+    const uint32_t*                             pDynamicOffsets
+
+### By introducing Dynamic UBO, what changes should I make ? 
+1. ds pool
+2. pipeline layout bindings
+3. ds related to the ubo
+
+
+## Use Case: multiple objects to render with different uniform values
+
+### Implement with uniform buffers
+allocate multiple uniform buffers and descriptor sets
+
+### Implement with dynamic ubo
+allocate 1 uniform buffers and descriptor set
+but bind descriptorset with different offset
+
+### Implement with push constant
+no buffer needed, 
+vkCmdPushConstants before draw command : change them on a per-mesh or per-pass basis.

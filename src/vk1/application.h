@@ -171,6 +171,8 @@ private:
     std::vector<glm::vec3> _rotations;
     // combo ufo has alignment requirement
     size_t _dynamicAlignment;
+    // for push constant
+	std::vector<glm::mat4> _scales;
 
     // graphics pipeline
     std::tuple<std::unordered_map<GRAPHICS_PIPELINE_SEMANTIC, VkPipeline>, VkPipelineLayout> _graphicsPipelineEntity;

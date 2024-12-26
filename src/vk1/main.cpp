@@ -13,6 +13,9 @@
 #include <array>
 #include <filesystem> // for shader
 
+#include <cuDevice.h>
+#include <cuPredefines.h>
+
 // To do it properly:
 
 // Include "vk_mem_alloc.h" file in each CPP file where you want to use the library. This includes declarations of all members of the library.
@@ -32,6 +35,8 @@
 // #include <camera.h>
 // #include <orbitCamera.h>
 #include <arcballCamera.h>
+
+using namespace core::cuda;
 
 bool gRunning = true;
 double gDt{0};
@@ -88,6 +93,8 @@ inline const std::set<std::string> &getInstanceExtensions()
 
 int main(int argc, char **argv)
 {
+    selectDevice();
+
     // BoxTextured.glb
     // Camera _camera{
     //     vec3f(std::array{0.f, 0.f, 6.f}),    // pos

@@ -233,7 +233,7 @@ public:
                 true // mapping
             );
             // copy into _rayGenSTBBuffer
-            auto &dst = std::get<3>(std::get<0>(_rayGenSTBBuffer));
+            auto &dst = std::get<BUFFER_ENTITY_UID::MAPPING_ADDRESS>(std::get<0>(_rayGenSTBBuffer));
             memcpy(dst, shaderGroupHandles.data(), handleSizeInBytes);
         }
 
@@ -244,7 +244,7 @@ public:
                 handleSizeAligned * 1, // buffer size considering alignment
                 handleSizeAligned,
                 true);
-            auto &dst = std::get<3>(std::get<0>(_rayMissSTBBuffer));
+            auto &dst = std::get<BUFFER_ENTITY_UID::MAPPING_ADDRESS>(std::get<0>(_rayMissSTBBuffer));
             memcpy(dst, shaderGroupHandles.data() + handleSizeInBytes, handleSizeInBytes);
         }
 
@@ -255,7 +255,7 @@ public:
                 handleSizeAligned * 1, // buffer size considering alignment
                 handleSizeAligned,
                 true);
-            auto &dst = std::get<3>(std::get<0>(_rayClosestHitSTBBuffer));
+            auto &dst = std::get<BUFFER_ENTITY_UID::MAPPING_ADDRESS>(std::get<0>(_rayClosestHitSTBBuffer));
             memcpy(dst, shaderGroupHandles.data() + handleSizeInBytes * 2, handleSizeInBytes);
         }
     }
@@ -292,7 +292,13 @@ public:
         _uniformCameraPropBuffer = _ctx->createPersistentBuffer(
             "Uniform Camera Prop Buffer",
             sizeof(UniformCameraProp),
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
     }
 
     void initBLAS()
@@ -389,7 +395,7 @@ public:
             accelerationStructureCreateInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
             vkCreateAccelerationStructureKHR(logicalDevice, &accelerationStructureCreateInfo, nullptr, &blasForTriangles);
 
-            //step2: ready to build, blas here for the geometry (triangles)
+            // step2: ready to build, blas here for the geometry (triangles)
             VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo{};
             accelerationBuildGeometryInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
             accelerationBuildGeometryInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
@@ -439,23 +445,116 @@ public:
             }
 
             // connection between blas and tlas
-            // 64-bit address: which can be used for device and shader operations 
+            // 64-bit address: which can be used for device and shader operations
             VkAccelerationStructureDeviceAddressInfoKHR accelerationDeviceAddressInfo{};
             accelerationDeviceAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
             accelerationDeviceAddressInfo.accelerationStructure = blasForTriangles;
             const VkDeviceAddress blasAddress = vkGetAccelerationStructureDeviceAddressKHR(logicalDevice, &accelerationDeviceAddressInfo);
-
             const auto blasAddress2 = std::get<BUFFER_ENTITY_UID::DEVICE_HOST_ADDRESS>(blasBuffer).deviceAddress;
+            ASSERT(blasAddress == blasAddress2, "Two different ways to fetch the 64bit address of blas");
 
+            // be done with the scratch buffer that used in the previous build process
+            auto vmaAllocator = _ctx->getVmaAllocator();
+            vmaDestroyBuffer(vmaAllocator, std::get<BUFFER_ENTITY_UID::BUFFER>(blasBuildBuffer), std::get<BUFFER_ENTITY_UID::VMA_ALLOCATION>(blasBuildBuffer));
 
             _blasEntity = std::make_tuple(blasBuffer, blasForTriangles, blasAddress);
             ++meshId;
         }
     }
 
+    // about the instancing
+    // includes all the geometry of a bottom-level acceleration structure at a transformed location.
+    // Multiple instances can point to the same bottom level acceleration structure
     void initTLAS()
     {
-    }
+        auto logicalDevice = _ctx->getLogicDevice();
+        const auto blasDeviceAddress = std::get<AS_ENTITY_UID::DEVICE_ADDRESS>(_blasEntity);
+        ASSERT(blasDeviceAddress, "blas 64bit device address must be valid");
+
+        size_t meshId = 0;
+        // transformation is done in the glb reader
+        VkTransformMatrixKHR transformMatrix = {
+            1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f};
+
+        std::vector<VkAccelerationStructureInstanceKHR> accelarationInstances;
+        accelarationInstances.reserve(_scene->meshes.size());
+
+        for (const auto &mesh : _scene->meshes)
+        {
+            VkAccelerationStructureInstanceKHR instance{};
+            instance.transform = transformMatrix;
+            // 24-bit application-specified index value accessible to ray shaders
+            // in the rt shader: meshIDR[gl_InstanceID] or meshIDR[gl_InstanceCustomIndexEXT]
+            // uniqueness
+            instance.instanceCustomIndex = meshId;
+            instance.mask = 0xFF;
+            instance.instanceShaderBindingTableRecordOffset = 0;
+            // disables face culling for this instance.
+            instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+            // connection between blas and tlas
+            instance.accelerationStructureReference = blasDeviceAddress;
+
+            accelarationInstances.emplace_back(instance);
+        }
+        const auto aiStagingBufferSizeInByte = sizeof(VkAccelerationStructureInstanceKHR) * accelarationInstances.size();
+        const auto aiStagingBuffer = _ctx->createBuffer(
+            "TLAS staging buffer"s,
+            aiStagingBufferSizeInByte,
+            // read-only input to an acceleration structure build.
+            VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+            VK_SHARING_MODE_EXCLUSIVE,
+            VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+            VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+            VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+            VMA_MEMORY_USAGE_CPU_ONLY,
+            true); // mapping when createBuffer
+
+        auto &dst = std::get<BUFFER_ENTITY_UID::MAPPING_ADDRESS>(aiStagingBuffer);
+        memcpy(dst, accelarationInstances.data(), aiStagingBufferSizeInByte);
+
+        // refer to this in the blas build for comparison
+        VkAccelerationStructureGeometryKHR accelerationStructureGeometry{};
+        accelerationStructureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+        // instance vs triangles
+        accelerationStructureGeometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+        accelerationStructureGeometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+        accelerationStructureGeometry.geometry.instances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
+        // VK_TRUE means: packed motion instance information as described in motion instances
+        accelerationStructureGeometry.geometry.instances.arrayOfPointers = VK_FALSE;
+        // data is either the address of an array of device or host addresses referencing individual VkAccelerationStructureInstanceKHR structures
+        VkDeviceOrHostAddressConstKHR instanceDataDeviceAddress{};
+        instanceDataDeviceAddress.deviceAddress = std::get<BUFFER_ENTITY_UID::DEVICE_HOST_ADDRESS>(aiStagingBuffer).deviceAddress;
+        accelerationStructureGeometry.geometry.instances.data = instanceDataDeviceAddress;
+
+        VkAccelerationStructureBuildGeometryInfoKHR accelerationStructureBuildGeometryInfo{};
+        accelerationStructureBuildGeometryInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+        accelerationStructureBuildGeometryInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+        // VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR: specified acceleration structure can be updated
+        accelerationStructureBuildGeometryInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
+        accelerationStructureBuildGeometryInfo.geometryCount = 1;
+        accelerationStructureBuildGeometryInfo.pGeometries = &accelerationStructureGeometry;
+
+        // measure the AS build size, same step as blas process
+        uint32_t instanceCount = static_cast<uint32_t>(accelarationInstances.size());
+        VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
+        accelerationStructureBuildSizesInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+        vkGetAccelerationStructureBuildSizesKHR(
+            logicalDevice,
+            VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+            &accelerationStructureBuildGeometryInfo,
+            &instanceCount,
+            &accelerationStructureBuildSizesInfo);
+
+        const auto tlasBufferSizeInBytes = accelerationStructureBuildSizesInfo.accelerationStructureSize;
+        // TO DO
+        // tLAS_.buffer = context_->createBuffer(
+        //     accelerationStructureBuildSizesInfo.accelerationStructureSize,
+        //     VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR |
+        //         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        //     VMA_MEMORY_USAGE_GPU_ONLY, "Top Level accel struct buffer");
+    };
 
     void bindResourceToDescriptorSets()
     {
@@ -491,5 +590,5 @@ private:
     BufferEntity *_compositeMatB;
     BufferEntity *_indirectDrawB;
 
-    std::tuple<BufferEntity, VkAccelerationStructureKHR, VkDeviceAddress> _blasEntity;
+    ASEntity _blasEntity;
 };

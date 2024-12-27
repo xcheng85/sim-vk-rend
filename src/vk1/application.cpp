@@ -96,16 +96,6 @@ void VkApplication::init()
     // _initialized = true;
 }
 
-static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-                                                    VkDebugUtilsMessageTypeFlagsEXT messageType,
-                                                    const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
-                                                    void * /* pUserData */)
-{
-    // LOGE("MessageID: %s %d \nMessage: %s\n\n", pCallbackData->pMessageIdName,
-    //      pCallbackData->messageIdNumber, pCallbackData->pMessage);
-    return VK_FALSE;
-}
-
 void VkApplication::teardown()
 {
     auto logicalDevice = _ctx.getLogicDevice();

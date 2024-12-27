@@ -338,7 +338,9 @@ public:
     const CommandBufferEntity &getCommandBufferForMipmapOnly() const;
     // non-graphics ops
     const CommandBufferEntity &getCommandBufferForTransferOnly() const;
+    // get command buffer for active frame: fits non pre-recorded commandbuffer
     std::pair<uint32_t, CommandBufferEntity> getCommandBufferForRendering() const;
+    std::vector<CommandBufferEntity>& getCommandBufferForRenderingForAllSwapChains();
 
     // let application to access the tracy
     TracyVkCtx getTracyContext() const;

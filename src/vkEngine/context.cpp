@@ -254,6 +254,8 @@ public:
 
     std::pair<uint32_t, CommandBufferEntity> getCommandBufferForRendering();
 
+    std::vector<CommandBufferEntity> &getCommandBufferForRenderingForAllSwapChains();
+
     void submitCommand();
 
     void present(uint32_t swapChainImageIndex);
@@ -1667,7 +1669,10 @@ void VkContext::Impl::BeginRecordCommandBuffer(CommandBufferEntity &cmdBufferEnt
     cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     //  specifies that each recording of the command buffer will only be submitted once,
     //  and the command buffer will be reset and recorded again between each submission.
+#ifndef VK_PRERECORD_COMMANDS
+    log(Level::Info, "command buffer created with VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT");
     cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+#endif
     VK_CHECK(vkBeginCommandBuffer(cmdBufferHandle, &cmdBufferBeginInfo));
 }
 
@@ -2639,6 +2644,11 @@ std::pair<uint32_t, CommandBufferEntity> VkContext::Impl::getCommandBufferForRen
     // std::tuple_cat(cmdBuffersForRendering[currentFrameId], std::tuple<uint32_t>(currentFrameId));
 }
 
+std::vector<CommandBufferEntity> &VkContext::Impl::getCommandBufferForRenderingForAllSwapChains()
+{
+    return cmdBuffers[COMMAND_SEMANTIC::RENDERING];
+}
+
 void VkContext::Impl::submitCommand()
 {
     auto [currentFrameId, cmdBuffersForRendering] = getCommandBufferForRendering();
@@ -2828,8 +2838,8 @@ BufferEntity VkContext::createPersistentBuffer(
     VkMemoryPropertyFlags preferredMemoryProperties,
     bool mapping)
 {
-    return _pimpl->createPersistentBuffer(name, bufferSizeInBytes, bufferUsageFlag, requiredMemoryProperties, 
-    preferredMemoryProperties, mapping);
+    return _pimpl->createPersistentBuffer(name, bufferSizeInBytes, bufferUsageFlag, requiredMemoryProperties,
+                                          preferredMemoryProperties, mapping);
 }
 
 BufferEntity VkContext::createStagingBuffer(
@@ -3123,6 +3133,11 @@ const CommandBufferEntity &VkContext::getCommandBufferForTransferOnly() const
 std::pair<uint32_t, CommandBufferEntity> VkContext::getCommandBufferForRendering() const
 {
     return _pimpl->getCommandBufferForRendering();
+}
+
+std::vector<CommandBufferEntity> &VkContext::getCommandBufferForRenderingForAllSwapChains()
+{
+    return _pimpl->getCommandBufferForRenderingForAllSwapChains();
 }
 
 TracyVkCtx VkContext::getTracyContext() const

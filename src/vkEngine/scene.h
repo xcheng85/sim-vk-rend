@@ -130,7 +130,7 @@ public:
     {
     }
 
-    inline void *data()
+    virtual void *data()
     {
         return _data;
     };
@@ -161,14 +161,18 @@ class Texture : public ITexture
 {
 public:
     // glb version, no resource ownership
-    Texture(const std::vector<uint8_t> &rawBuffer);
+    Texture() = delete;
+    explicit Texture(const std::vector<uint8_t> &rawBuffer);
+    explicit Texture(unsigned char* rawBuffer, size_t sizeInBytes);
     ~Texture();
 };
 
 class TextureKtx : public ITexture
 {
 public:
-    TextureKtx(std::string path);
+    explicit TextureKtx(std::string path);
+    explicit TextureKtx(unsigned char* rawBuffer, int sizeInBytes);
+
     ~TextureKtx();
 
 private:

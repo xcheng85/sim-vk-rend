@@ -12,6 +12,8 @@
 #include <tracy/TracyVulkan.hpp>
 
 #include <scene.h>
+#include <mathUtils.h>
+#include <julia.h>
 
 #define VK_NO_PROTOTYPES // for volk
 #define VOLK_IMPLEMENTATION
@@ -23,6 +25,8 @@ static constexpr int MAX_DESCRIPTOR_SETS = 1 * MAX_FRAMES_IN_FLIGHT + 1 + 4;
 // static constexpr int MAX_DESCRIPTOR_SETS = 1000;
 //  Default fence timeout in nanoseconds
 #define DEFAULT_FENCE_TIMEOUT 100000000000
+
+using namespace vkEngine::math;
 
 enum DESC_LAYOUT_SEMANTIC : int
 {
@@ -215,7 +219,6 @@ void VkApplication::bindResourceToDescriptorSets()
                 VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                 offset++);
         }
-
 
         // for glb samplers
         std::vector<VkSampler> imageSamplers;
@@ -424,7 +427,10 @@ void VkApplication::loadTextures()
     VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
 #if defined(__ANDROID__)
 #else
-    _texture = std::make_unique<TextureKtx>(filename);
+    cuComplexf c(-0.88f, 0.18f);
+
+    // // _texture = std::make_unique<TextureKtx>(filename);
+    _texture = std::make_unique<JuliaSet>(512, 1.5f, 200, c);
 #endif
 
     const auto textureMipLevels = getMipLevelsCount(_texture->width(),

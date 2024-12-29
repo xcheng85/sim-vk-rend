@@ -896,7 +896,6 @@ void VkApplication::preHostDeviceIO()
 // wait for completion using fence
 void VkApplication::postHostDeviceIO()
 {
-
     auto logicalDevice = _ctx.getLogicDevice();
     auto graphicsQueue = _ctx.getGraphicsComputeQueue();
     auto vmaAllocator = _ctx.getVmaAllocator();
@@ -1538,11 +1537,11 @@ inline void uploadTextureToGPU(
     std::vector<ImageEntity> &imageEntities)
 {
     log(Level::Info, "uploadTextureToGPU : ", name);
-    const auto textureMipLevels = getMipLevelsCount(texture->width,
-                                                    texture->height);
+    const auto textureMipLevels = getMipLevelsCount(texture->width(),
+                                                    texture->height());
     const uint32_t textureLayoutCount = 1;
-    const VkExtent3D textureExtent = {static_cast<uint32_t>(texture->width),
-                                      static_cast<uint32_t>(texture->height), 1};
+    const VkExtent3D textureExtent = {static_cast<uint32_t>(texture->width()),
+                                      static_cast<uint32_t>(texture->height()), 1};
     const bool generateMipmaps = true;
     const auto imageEntity = ctx->createImage("glb_tex_" + std::to_string(textureId),
                                               VK_IMAGE_TYPE_2D,
@@ -1583,7 +1582,7 @@ inline void uploadTextureToGPU(
             imageEntity,
             stagingBuffer,
             cmdBufferForTransferOnly,
-            texture->data);
+            texture->data());
         ctx->releaseQueueFamilyOwnership(
             cmdBufferForTransferOnly,
             imageEntity,

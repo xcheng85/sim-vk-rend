@@ -11,6 +11,8 @@
 #include <tracy/Tracy.hpp>
 #include <tracy/TracyVulkan.hpp>
 
+#include <scene.h>
+
 #define VK_NO_PROTOTYPES // for volk
 #define VOLK_IMPLEMENTATION
 
@@ -22,11 +24,19 @@ static constexpr int MAX_DESCRIPTOR_SETS = 1 * MAX_FRAMES_IN_FLIGHT + 1 + 4;
 //  Default fence timeout in nanoseconds
 #define DEFAULT_FENCE_TIMEOUT 100000000000
 
+enum DESC_LAYOUT_SEMANTIC : int
+{
+    TEX_SAMP = 0,
+    DESC_LAYOUT_SEMANTIC_SIZE
+};
+
 void VkApplication::init()
 {
     _ctx.createSwapChain();
     _swapChainRenderPass = _ctx.createSwapChainRenderPass();
     _ctx.initDefaultCommandBuffers();
+
+    loadTextures();
 
     createShaderModules();
     createUniformBuffers();
@@ -55,6 +65,22 @@ void VkApplication::teardown()
     // shader module
     vkDestroyShaderModule(logicalDevice, _vsShaderModule, nullptr);
     vkDestroyShaderModule(logicalDevice, _fsShaderModule, nullptr);
+
+    for (const auto &imageEntity : _imageEntities)
+    {
+        const auto image = std::get<IMAGE_ENTITY_OFFSET::IMAGE>(imageEntity);
+        const auto imageView = std::get<IMAGE_ENTITY_OFFSET::IMAGE_VIEW>(imageEntity);
+        const auto imageAllocation = std::get<IMAGE_ENTITY_OFFSET::IMAGE_VMA_ALLOCATION>(imageEntity);
+
+        vkDestroyImageView(logicalDevice, imageView, nullptr);
+        vmaDestroyImage(vmaAllocator, image, imageAllocation);
+    }
+
+    for (const auto &samplerEntity : _samplerEntities)
+    {
+        const auto sampler = std::get<0>(samplerEntity);
+        vkDestroySampler(logicalDevice, sampler, nullptr);
+    }
 
     // shader data
     vkDestroyDescriptorPool(logicalDevice, _descriptorSetPool, nullptr);
@@ -102,17 +128,40 @@ void VkApplication::createUniformBuffers()
 
 void VkApplication::createDescriptorSetLayout()
 {
-    std::vector<std::vector<VkDescriptorSetLayoutBinding>> setBindings(0);
+    std::vector<std::vector<VkDescriptorSetLayoutBinding>> setBindings(DESC_LAYOUT_SEMANTIC_SIZE);
+    // layout(set = 0, binding = 0) uniform texture2D BindlessImage2D[];
+    // layout(set = 0, binding = 1) uniform sampler BindlessSampler;
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP].resize(2);
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][0].binding = 0; // depends on the shader: set 0, binding = 0
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][0].descriptorCount = 1;
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][1].binding = 1; // depends on the shader: set 0, binding = 0
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][1].descriptorCount = 1;
+    setBindings[DESC_LAYOUT_SEMANTIC::TEX_SAMP][1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
     _descriptorSetLayouts = _ctx.createDescriptorSetLayout(setBindings);
 }
 
 void VkApplication::createDescriptorPool()
 {
-    _descriptorSetPool = _ctx.createDescriptorSetPool({}, 100);
+    _descriptorSetPool = _ctx.createDescriptorSetPool({
+                                                          {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 10},
+                                                          {VK_DESCRIPTOR_TYPE_SAMPLER, 10},
+                                                      },
+                                                      100);
 }
 
 void VkApplication::allocateDescriptorSets()
 {
+    // only one set in frag.
+    // layout(set = 0, binding = 0) uniform texture2D BindlessImage2D[];
+    // layout(set = 0, binding = 1) uniform sampler BindlessSampler;
+    _descriptorSets = _ctx.allocateDescriptorSet(_descriptorSetPool,
+                                                 {{&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::TEX_SAMP],
+                                                   1}});
 }
 
 void VkApplication::createGraphicsPipeline()
@@ -152,6 +201,36 @@ void VkApplication::createSwapChainFramebuffers()
 void VkApplication::bindResourceToDescriptorSets()
 {
     auto logicalDevice = _ctx.getLogicDevice();
+    {
+        const auto dstSets = _descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::TEX_SAMP]];
+        ASSERT(dstSets.size() == 1, "TEX_SAMP descriptor set size is 1");
+
+        // mimic asyn-io callback case
+        uint32_t offset = 0;
+        for (const auto &imageEntity : _imageEntities)
+        {
+            _ctx.bindTextureToDescriptorSet(
+                {imageEntity},
+                dstSets[0],
+                VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                offset++);
+        }
+
+
+        // for glb samplers
+        std::vector<VkSampler> imageSamplers;
+        std::transform(_samplerEntities.begin(), _samplerEntities.end(),
+                       std::back_inserter(imageSamplers),
+                       [](const auto &samplerEntity)
+                       {
+                           return std::get<0>(samplerEntity);
+                       });
+        _ctx.bindSamplerToDescriptorSet(
+            imageSamplers,
+            dstSets[0],
+            VK_DESCRIPTOR_TYPE_SAMPLER,
+            1);
+    }
 }
 
 void VkApplication::deleteSwapChain()
@@ -318,7 +397,12 @@ void VkApplication::recordCommandBufferForOneSwapChainImage(
     auto graphicsPipelineLookUpTable = std::get<0>(_graphicsPipelineEntity);
     auto graphicsPipelineLayout = std::get<1>(_graphicsPipelineEntity);
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipelineLookUpTable[GRAPHICS_PIPELINE_SEMANTIC::NORMAL]);
-
+    const auto firstSetId = 0;
+    const auto numSets = 1;
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            graphicsPipelineLayout, firstSetId, numSets,
+                            &_descriptorSets[&_descriptorSetLayouts[DESC_LAYOUT_SEMANTIC::TEX_SAMP]][0],
+                            0, nullptr);
     {
         // extra scope as required by TracyVkZone
         TracyVkZone(tracyCtx, commandBuffer, "main draw pass");
@@ -332,4 +416,95 @@ void VkApplication::recordCommandBufferForOneSwapChainImage(
 #endif
 
     TracyVkCollect(tracyCtx, commandBuffer);
+}
+
+void VkApplication::loadTextures()
+{
+    std::string filename = getAssetPath() + "/lavaplanet_color_rgba.ktx";
+    VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
+#if defined(__ANDROID__)
+#else
+    _texture = std::make_unique<TextureKtx>(filename);
+#endif
+
+    const auto textureMipLevels = getMipLevelsCount(_texture->width(),
+                                                    _texture->height());
+    const uint32_t textureLayoutCount = 1;
+    const VkExtent3D textureExtent = {static_cast<uint32_t>(_texture->width()),
+                                      static_cast<uint32_t>(_texture->height()), 1};
+    const bool generateMipmaps = true;
+    const auto imageEntity = _ctx.createImage("texuture_0",
+                                              VK_IMAGE_TYPE_2D,
+                                              VK_FORMAT_R8G8B8A8_UNORM,
+                                              textureExtent,
+                                              textureMipLevels,
+                                              textureLayoutCount,
+                                              VK_SAMPLE_COUNT_1_BIT,
+                                              // usage here: both dst and src as mipmap generation
+                                              VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+                                                  VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                                              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                                              generateMipmaps);
+
+    _imageEntities.emplace_back(std::move(imageEntity));
+
+    // write raw data from cpu to the mipmap level 0 of image
+    const auto stagingBufferSizeForImage = std::get<IMAGE_ENTITY_OFFSET::IMAGE_VMA_ALLOCATION_INFO>(imageEntity).size;
+    _imageStagingBuffers.emplace_back(_ctx.createStagingBuffer(
+        "Staging Buffer Texture_0",
+        stagingBufferSizeForImage));
+
+    // io commands
+    auto cmdBuffersForIO = _ctx.getCommandBufferForIO();
+    _ctx.BeginRecordCommandBuffer(cmdBuffersForIO);
+
+    _ctx.writeImage(
+        _imageEntities.back(),
+        _imageStagingBuffers.back(),
+        cmdBuffersForIO,
+        _texture->data());
+
+    _ctx.EndRecordCommandBuffer(cmdBuffersForIO);
+
+    const auto commandBuffer = std::get<COMMAND_BUFFER_ENTITY_OFFSET::COMMAND_BUFFER>(cmdBuffersForIO);
+    const auto fence = std::get<COMMAND_BUFFER_ENTITY_OFFSET::FENCE>(cmdBuffersForIO);
+    const auto cmdQueue = std::get<COMMAND_BUFFER_ENTITY_OFFSET::QUEUE>(cmdBuffersForIO);
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.waitSemaphoreCount = 0;
+    submitInfo.pWaitSemaphores = VK_NULL_HANDLE;
+    // This depends on nobody
+    // // only useful when having waitsemaphore
+    // submitInfo.pWaitDstStageMask = &flags;
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+    // no body depends on him as well
+    submitInfo.signalSemaphoreCount = 0;
+    submitInfo.pSignalSemaphores = VK_NULL_HANDLE;
+
+    // must reset fence of waiting (Signal -> not signal, due to initally fence is created with state "signaled")
+    auto logicalDevice = _ctx.getLogicDevice();
+    VK_CHECK(vkResetFences(logicalDevice, 1, &fence));
+    // This will change state of fence to signaled
+    VK_CHECK(vkQueueSubmit(cmdQueue, 1, &submitInfo, fence));
+    const auto result = vkWaitForFences(logicalDevice, 1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT);
+    if (result == VK_TIMEOUT)
+    {
+        // should not happen
+        ASSERT(false, "vkWaitForFences somehow Timed out !");
+        vkDeviceWaitIdle(logicalDevice);
+    }
+
+    // staging (pinned buffer in host is not needed anymore, clean)
+    auto vmaAllocator = _ctx.getVmaAllocator();
+    for (size_t i = 0; i < _imageStagingBuffers.size(); ++i)
+    {
+        vmaDestroyBuffer(
+            vmaAllocator,
+            std::get<BUFFER_ENTITY_UID::BUFFER>(_imageStagingBuffers[i]),
+            std::get<BUFFER_ENTITY_UID::VMA_ALLOCATION>(_imageStagingBuffers[i]));
+    }
+
+    _samplerEntities.emplace_back(_ctx.createSampler("sampler0"));
 }

@@ -1,18 +1,23 @@
 cmake_minimum_required(VERSION 3.29)
-project(sim-vk-rend LANGUAGES CUDA CXX VERSION 1.0.0 )
+# C: for ktx
+project(sim-vk-rend LANGUAGES CUDA C CXX VERSION 1.0.0 )
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 #include cmake script
 include(CHECK_INSOURCE_BUILD)
-# include(BOOST)
-# include(CUDA)
+include(BOOST)
+include(CUDA)
 
 # c++ version
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+# following will break cuda23 cmake error
 set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CUDA_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+add_definitions(-DCMAKE_EXPORT_COMPILE_COMMANDS=1)
 
 find_package(Vulkan REQUIRED SPIRV-Tools)
 
@@ -98,6 +103,39 @@ FetchContent_Declare (
   GIT_PROGRESS TRUE
 )
 FetchContent_MakeAvailable(tracy)
+
+message(NOTICE "Fetching LibKTX from https://github.com/KhronosGroup/KTX-Software ...")
+set(KTX_FEATURE_STATIC_LIBRARY ON CACHE BOOL "Build KTX as a static library" FORCE)
+# gtest issue on windows
+# set(KTX_FEATURE_TESTS OFF)
+FetchContent_Declare(
+        fetch_ktx
+        GIT_REPOSITORY https://github.com/KhronosGroup/KTX-Software
+        GIT_TAG        v4.3.2
+)
+FetchContent_MakeAvailable(fetch_ktx)
+
+# if (NOT ANDROID)
+# FetchContent_Declare(
+#     imgui
+#     GIT_REPOSITORY https://github.com/ocornut/imgui.git
+#     GIT_TAG v1.91.6
+# )
+# FetchContent_MakeAvailable(tracy)
+
+# add_Library(imgui STATIC
+# ${imgui_SOURCE_DIR}/imgui.cpp
+# ${imgui_SOURCE_DIR}/imgui_draw.cpp
+# ${imgui_SOURCE_DIR}/imgui_demo.cpp
+# ${imgui_SOURCE_DIR}/imgui_tables.cpp
+# ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+# ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+# ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp)
+# # automatically include all the header files
+# target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR})
+# target_compile_definitions(imgui PUBLIC IMGUI_IMPL_VULKAN_NO_PROTOTYPES)
+
+# endif ()
 
 # for experimental/future
 #GCC provides experimental support for the upcoming ISO C++ standard, C++0x. 

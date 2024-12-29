@@ -13,16 +13,18 @@ target_link_libraries(
     GLTFSDK
     ${Vulkan_LIBRARIES} volk_headers ${RequiredVulkanSDKLIBS}
     TracyClient
+    ktx
 )
 
 #glm
 target_compile_definitions(vkEngine PUBLIC -DGLM_ENABLE_EXPERIMENTAL -DVK_PRERECORD_COMMANDS)
 
-
 target_include_directories(vkEngine PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
   "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/core/utility>"
-  ${gltfsdk_SOURCE_DIR}/GLTFSDK/Inc ${stb_SOURCE_DIR}
+  ${gltfsdk_SOURCE_DIR}/GLTFSDK/Inc 
+  ${stb_SOURCE_DIR}
+  ${fetch_ktx_SOURCE_DIR}/include
 )
 
 get_target_property(dirs vkEngine INTERFACE_INCLUDE_DIRECTORIES)

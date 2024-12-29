@@ -1,5 +1,13 @@
 # sim-vk-rend
 
+## cmake notes
+
+### FetchContent_GetProperties
+
+This command is rarely needed when using FetchContent_MakeAvailable(). 
+It is more commonly used as part of implementing the deprecated pattern with FetchContent_Populate()
+
+
 ## multi-threading + command buffer
 1. separate command pool per thread
 

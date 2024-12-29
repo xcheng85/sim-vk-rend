@@ -30,6 +30,7 @@
 #include <array>
 #include <filesystem> // for shader
 
+
 // must ahead of <vk_mem_alloc.h>, or else it will crash on vk functions
 #ifndef __ANDROID__
 #define VK_NO_PROTOTYPES // for volk
@@ -43,6 +44,7 @@
 
 #include <misc.h>
 #include <context.h>
+#include <scene.h>
 
 #if defined(__ANDROID__)
 // functor for custom deleter for unique_ptr
@@ -116,7 +118,6 @@ private:
     void preHostDeviceIO();
     void postHostDeviceIO();
 
-    void loadVao();
     void loadTextures();
 
     VkContext &_ctx;
@@ -142,4 +143,11 @@ private:
 
     // graphics pipeline
     std::tuple<std::unordered_map<GRAPHICS_PIPELINE_SEMANTIC, VkPipeline>, VkPipelineLayout> _graphicsPipelineEntity;
+
+    // all the textures
+    std::unique_ptr<ITexture> _texture;
+    std::vector<ImageEntity> _imageEntities;
+    std::vector<BufferEntity> _imageStagingBuffers;
+    // samplers in the glb scene
+    std::vector<std::tuple<VkSampler>> _samplerEntities;
 };

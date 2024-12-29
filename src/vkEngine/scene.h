@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <vector>
 #include <numeric>
 #include <stb_image.h>
@@ -119,27 +120,59 @@ struct Material
     vec4f basecolor;
 };
 
-struct Texture
+#include <ktx.h>
+#include <ktxvulkan.h>
+
+class ITexture
 {
+public:
+    virtual ~ITexture()
+    {
+    }
+
+    inline void *data()
+    {
+        return _data;
+    };
+
+    inline uint32_t width() const
+    {
+        return _width;
+    };
+    inline uint32_t height() const
+    {
+        return _height;
+    }
+    inline uint8_t channels() const
+    {
+        return _channels;
+    }
+
+protected:
+    void *_data{nullptr};
+    int _width{0};
+    int _height{0};
+    int _channels{0};
+
+    ITexture() {};
+};
+
+class Texture : public ITexture
+{
+public:
+    // glb version, no resource ownership
     Texture(const std::vector<uint8_t> &rawBuffer);
-
-    //    {
-    //        LOGI("rawBuffer Size: %d", rawBuffer.size());
-    //        ktxResult result = ktxTexture_CreateFromMemory(rawBuffer.data(), rawBuffer.size(),
-    //                                                       KTX_TEXTURE_CREATE_NO_FLAGS,
-    //                                             &ktxTexture);
-    //        ASSERT(result == KTX_SUCCESS, "ktxTexture_CreateFromMemory failed");
-    //    }
     ~Texture();
-    //    {
-    //        ktxTexture_Destroy(ktxTexture);
-    //    }
-    // ktxTexture *ktxTexture{nullptr};
+};
 
-    void *data{nullptr};
-    int width{0};
-    int height{0};
-    int channels{0};
+class TextureKtx : public ITexture
+{
+public:
+    TextureKtx(std::string path);
+    ~TextureKtx();
+
+private:
+    ktxTexture *_ktxTexture{nullptr};
 };
 
 struct Scene

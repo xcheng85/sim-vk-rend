@@ -46,6 +46,11 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(SDL2)
 
+if (WIN32)
+message(NOTICE "Fetching volk from https://github.com/zeux/volk.git ...")
+set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_WIN32_KHR)
+endif()
+
 FetchContent_Declare(
         volk
         GIT_REPOSITORY https://github.com/zeux/volk.git
@@ -107,7 +112,7 @@ FetchContent_MakeAvailable(tracy)
 message(NOTICE "Fetching LibKTX from https://github.com/KhronosGroup/KTX-Software ...")
 set(KTX_FEATURE_STATIC_LIBRARY ON CACHE BOOL "Build KTX as a static library" FORCE)
 # gtest issue on windows
-# set(KTX_FEATURE_TESTS OFF)
+set(KTX_FEATURE_TESTS OFF)
 FetchContent_Declare(
         fetch_ktx
         GIT_REPOSITORY https://github.com/KhronosGroup/KTX-Software

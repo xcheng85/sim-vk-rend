@@ -4,6 +4,7 @@
 #include <string>
 #include <iostream>
 #include <array>
+#include <unordered_map>
 #include <utility>
 #include <any>
 #if defined(__ANDROID__)
@@ -12,12 +13,13 @@
 
 #ifndef __ANDROID__
 #define VK_NO_PROTOTYPES // for volk
+// max has been made a macro. This happens at some point inside windows.h.
+// Define NOMINMAX prior to including to stop windows.h from doing that.
+// volk.h when set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_WIN32_KHR) will include windows.h
+#define NOMINMAX 
 #include "volk.h"
 #endif
 
-#include <vector.h>
-#include <matrix.h>
-#include <quaternion.h>
 #include <glm/ext.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
@@ -220,10 +222,11 @@ VkImageViewType getImageViewType(VkImageType imageType);
 uint32_t get2DImageSizeInBytes(VkExtent2D extent, VkFormat imageType);
 uint32_t get3DImageSizeInBytes(VkExtent3D extent, VkFormat imageType);
 
-inline vec2f screenSpace2Ndc(vec2i screenspaceCoord, vec2i screenDimension)
+inline glm::vec2 screenSpace2Ndc(glm::ivec2 screenspaceCoord, glm::ivec2 screenDimension)
 {
-    return vec2f(std::array<float, 2>({static_cast<float>(screenspaceCoord[COMPONENT::X]) * 2.f / screenDimension[COMPONENT::X] - 1.f,
-                                       1.f - 2.f * static_cast<float>(screenspaceCoord[COMPONENT::Y]) / screenDimension[COMPONENT::Y]}));
+    return glm::vec2(
+        static_cast<float>(screenspaceCoord[0]) * 2.f / screenDimension[0] - 1.f,
+        1.f - 2.f * static_cast<float>(screenspaceCoord[1]) / screenDimension[1]);
 }
 
 // math

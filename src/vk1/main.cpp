@@ -191,8 +191,7 @@ int main(int argc, char **argv)
         0.01f,
         4000.f,
         60.f,
-        1280.0/720.0
-    };
+        1280.0 / 720.0};
 
     //// CarbonFibre
     // Camera _camera{
@@ -202,7 +201,7 @@ int main(int argc, char **argv)
     //     0.0f,                                                    // initial pitch
     //     -97.f                                                    // initial yaw
     // };
-    WindowConfig cfg{1280, 720, "demo"s};
+    WindowConfig cfg{1280, 720, "demo"};
 
     Window window(&cfg, _orbitCamera);
 
@@ -248,7 +247,7 @@ int main(int argc, char **argv)
     VkApplication vkApp(
         ctx,
         _orbitCamera,
-        "BarramundiFish.glb"s);
+        "BarramundiFish.glb");
     vkApp.init();
 
     // init();

@@ -1650,7 +1650,7 @@ std::vector<CommandBufferEntity> VkContext::Impl::createCommandBuffers(
     res.reserve(count);
     for (size_t i = 0; i < count; ++i)
     {
-        res.emplace_back(make_tuple(commandPool, commandBuffers[i], inFlightFences[i], queueFamilyIndex, queue));
+        res.emplace_back(std::make_tuple(commandPool, commandBuffers[i], inFlightFences[i], queueFamilyIndex, queue));
     }
     return res;
 }
@@ -1670,7 +1670,7 @@ void VkContext::Impl::BeginRecordCommandBuffer(CommandBufferEntity &cmdBufferEnt
     //  specifies that each recording of the command buffer will only be submitted once,
     //  and the command buffer will be reset and recorded again between each submission.
 #ifndef VK_PRERECORD_COMMANDS
-    log(Level::Info, "command buffer created with VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT");
+    //log(Level::Info, "command buffer created with VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT");
     cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 #endif
     VK_CHECK(vkBeginCommandBuffer(cmdBufferHandle, &cmdBufferBeginInfo));
@@ -1741,12 +1741,12 @@ BufferEntity VkContext::Impl::createBuffer(
     };
     vmaGetAllocationInfo(_vmaAllocator, allocation, &allocationInfo);
     if (!mapping)
-        return make_tuple(buffer, allocation, allocationInfo, nullptr, bufferSizeInBytes, da);
+        return std::make_tuple(buffer, allocation, allocationInfo, nullptr, bufferSizeInBytes, da);
     else
     {
         MappingAddressType address;
         VK_CHECK(vmaMapMemory(_vmaAllocator, allocation, &address));
-        return make_tuple(buffer, allocation, allocationInfo, address, bufferSizeInBytes, da);
+        return std::make_tuple(buffer, allocation, allocationInfo, address, bufferSizeInBytes, da);
     }
 }
 
@@ -1902,7 +1902,7 @@ ImageEntity VkContext::Impl::createImage(
     imageViewInfo.image = image;
     VK_CHECK(vkCreateImageView(_logicalDevice, &imageViewInfo, nullptr, &imageView));
 
-    return make_tuple(image, imageView, imageAllocation, imageAllocationInfo, textureMipLevelCount,
+    return std::make_tuple(image, imageView, imageAllocation, imageAllocationInfo, textureMipLevelCount,
                       extent, format);
 }
 
@@ -1937,7 +1937,7 @@ std::tuple<VkSampler> VkContext::Impl::createSampler(const std::string &name)
     samplerCreateInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
     VK_CHECK(vkCreateSampler(_logicalDevice, &samplerCreateInfo, nullptr, &sampler));
     setCorrlationId(sampler, _logicalDevice, VK_OBJECT_TYPE_SAMPLER, name);
-    return make_tuple(sampler);
+    return std::make_tuple(sampler);
 }
 
 std::vector<VkDescriptorSetLayout> VkContext::Impl::createDescriptorSetLayout(
@@ -2207,7 +2207,7 @@ std::tuple<VkPipeline, VkPipelineLayout> VkContext::Impl::createComputePipeline(
     pipelineInfo.layout = pipelineLayout;
 
     VK_CHECK(vkCreateComputePipelines(_logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &computePipeline));
-    return make_tuple(computePipeline, pipelineLayout);
+    return std::make_tuple(computePipeline, pipelineLayout);
 }
 
 // only need shader stage and pipelinelayout

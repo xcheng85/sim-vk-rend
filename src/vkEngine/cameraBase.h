@@ -11,12 +11,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
 
-#include <vector.h>
-#include <matrix.h>
-#include <fp.h>
 #include <misc.h>
-
-using namespace std;
 
 class CameraBase
 {
@@ -41,8 +36,8 @@ public:
     virtual void handleMouseCursorEvent(
         int button,
         int state,
-        const vec2i &currMouseInScreenSpace,
-        const vec2i &screenDimension) = 0;
+        const glm::ivec2 &currMouseInScreenSpace,
+        const glm::ivec2&screenDimension) = 0;
     virtual void handleMouseClickEvent(int button, int state, int x, int y) = 0;
     virtual void handleMouseWheelEvent(float v) = 0;
 
@@ -66,7 +61,7 @@ public:
     virtual Fustrum fustrumPlanes() const= 0;
 
 protected:
-    vec2f _prevMouseCoordsInNdc{-2.f};
+    glm::vec2 _prevMouseCoordsInNdc{-2.f, -2.f };
 
     glm::vec3 _eye;
     float _nearPlaneD{0.0f};

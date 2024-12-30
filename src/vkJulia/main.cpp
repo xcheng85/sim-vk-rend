@@ -1,6 +1,5 @@
 #define VK_NO_PROTOTYPES // for volk
 #define VOLK_IMPLEMENTATION
-
 #include "volk.h"
 #include <window.h>
 #include <assert.h>
@@ -85,6 +84,10 @@ inline const std::set<std::string> &getInstanceExtensions()
         //"VK_LUNARG_direct_driver_loading", // crash when renderdoc launch
         // retrieving debug info from shaders
         // "VK_EXT_layer_settings", // crash when renderdoc launch
+        // Multiple APIs, cuda here
+        VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME,
+        VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME,
+        VK_KHR_EXTERNAL_FENCE_CAPABILITIES_EXTENSION_NAME
         };
     return instanceExtensions;
 }
@@ -99,10 +102,9 @@ int main(int argc, char **argv)
         0.01f,
         4000.f,
         60.f,
-        1280.0/720.0
-    };
+        1280.0 / 720.0};
 
-    WindowConfig cfg{1280, 720, "vkJulia"s};
+    WindowConfig cfg{1280, 720, "vkJulia"};
     Window window(&cfg, _orbitCamera);
 
     VK_CHECK(volkInitialize());
@@ -137,6 +139,16 @@ int main(int argc, char **argv)
         // VK_KHR_RAY_QUERY_EXTENSION_NAME, // providing ray query intrinsics for all shader stages
         VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME,
         VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
+        // cuda interop
+        VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
+        VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME,
+#ifdef _WIN64
+        VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME,
+        VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME,
+#else
+        VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
+        VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME,
+#endif
     };
 
     VkContext ctx(window,

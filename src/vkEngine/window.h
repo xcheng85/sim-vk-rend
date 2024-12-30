@@ -6,8 +6,6 @@
 #include <SDL_video.h>
 #include <cameraBase.h>
 
-using namespace std;
-
 extern bool gRunning;
 extern double gDt;
 extern uint64_t gLastFrame;
@@ -37,7 +35,7 @@ public:
         const auto &config = *(static_cast<WindowConfig *>(configuration));
         if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
         {
-            cerr << format("SDL Init error: {}\n", SDL_GetError());
+            std::cerr << std::format("SDL Init error: {}\n", SDL_GetError());
             return;
         }
 
@@ -53,8 +51,8 @@ public:
         int w, h;
         SDL_Vulkan_GetDrawableSize(_window, &w, &h);
         SDL_SetWindowFullscreen(_window, 0);
-        _winDimension[COMPONENT::X] = w;
-        _winDimension[COMPONENT::Y] = h;
+        _winDimension[0] = w;
+        _winDimension[1] = h;
     }
     void shutdown()
     {
@@ -114,8 +112,7 @@ public:
                 _camera.handleMouseCursorEvent(
                     event.button.button,
                     event.motion.state,
-                    vec2i(std::array<int32_t, 2>({event.motion.x,
-                                                  event.motion.y})),
+                    glm::ivec2(event.motion.x,event.motion.y),
                     _winDimension);
                 break;
             case SDL_MOUSEWHEEL:
@@ -124,8 +121,8 @@ public:
             case SDL_WINDOWEVENT:
                 if (event.window.event == SDL_WINDOWEVENT_RESIZED)
                 {
-                    _winDimension[COMPONENT::X] = event.window.data1;
-                    _winDimension[COMPONENT::Y] = event.window.data2;
+                    _winDimension[0] = event.window.data1;
+                    _winDimension[1] = event.window.data2;
                 }
                 break;
             }
@@ -139,7 +136,7 @@ public:
 private:
     SDL_Window *_window;
     CameraBase &_camera;
-    vec2i _winDimension{0};
+    glm::ivec2 _winDimension{0};
 
     // bool _firstMouseCursor{true};
     // int _lastMouseCursorX;

@@ -4,8 +4,6 @@
 #include <vector>
 #include <numeric>
 #include <stb_image.h>
-#include <vector.h>
-#include <matrix.h>
 #include <misc.h>
 
 #include <glm/ext.hpp>
@@ -75,17 +73,12 @@ struct Vertex
     float uy;
     uint32_t material;
 
-    void transform(const mat4x4f &m)
+    void transform(const glm::mat4 &m)
     {
-        auto newp = MatrixMultiplyVector4x4(m, vec4f(std::array<float, 4>{
-                                                   vx,
-                                                   vy,
-                                                   vz,
-                                                   1.0}));
-
-        vx = newp[COMPONENT::X];
-        vy = newp[COMPONENT::Y];
-        vz = newp[COMPONENT::Z];
+        auto newp = m * glm::vec4(vx, vy, vz, 1.0);
+        vx = newp[0];
+        vy = newp[1];
+        vz = newp[2];
     }
 };
 
@@ -100,12 +93,10 @@ struct Mesh
     std::vector<Vertex> vertices{};
     std::vector<uint32_t> indices{};
     int32_t materialIdx{-1};
-    vec3f minAABB{std::array{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
-                             std::numeric_limits<float>::max()}};
-    vec3f maxAABB{std::array{-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max(),
-                             -std::numeric_limits<float>::max()}};
-    vec3f extents;
-    vec3f center;
+    glm::vec3 minAABB{(std::numeric_limits<float>::max)(), (std::numeric_limits<float>::max)(), (std::numeric_limits<float>::max)()};
+    glm::vec3 maxAABB{-(std::numeric_limits<float>::max)(), -(std::numeric_limits<float>::max)(), -(std::numeric_limits<float>::max)()};
+    glm::vec3 extents;
+    glm::vec3 center;
 };
 
 // https://github.com/KhronosGroup/glTF/blob/2.0/specification/2.0/schema/material.schema.json
@@ -117,7 +108,7 @@ struct Material
     int basecolorTextureId{-1};
     int basecolorSamplerId{-1};
     int metallicRoughnessTextureId{-1};
-    vec4f basecolor;
+    glm::vec4 basecolor;
 };
 
 #include <ktx.h>
@@ -163,7 +154,7 @@ public:
     // glb version, no resource ownership
     Texture() = delete;
     explicit Texture(const std::vector<uint8_t> &rawBuffer);
-    explicit Texture(unsigned char* rawBuffer, size_t sizeInBytes);
+    explicit Texture(unsigned char *rawBuffer, size_t sizeInBytes);
     ~Texture();
 };
 
@@ -171,7 +162,7 @@ class TextureKtx : public ITexture
 {
 public:
     explicit TextureKtx(std::string path);
-    explicit TextureKtx(unsigned char* rawBuffer, int sizeInBytes);
+    explicit TextureKtx(unsigned char *rawBuffer, int sizeInBytes);
 
     ~TextureKtx();
 

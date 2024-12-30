@@ -641,7 +641,7 @@ void VkApplication::createShaderModules()
 void VkApplication::createGraphicsPipeline()
 {
     // life cycle of string must be longer.
-    const std::string entryPoint{"main"s};
+    const std::string entryPoint{"main"};
 
     SpecializationDataDef1 specializationData;
     specializationData.lightingModel = 0;
@@ -660,9 +660,9 @@ void VkApplication::createGraphicsPipeline()
 
     _graphicsPipelineEntity = _ctx.createGraphicsPipeline(
         {{VK_SHADER_STAGE_VERTEX_BIT,
-          make_tuple(_vsShaderModule, entryPoint.c_str(), nullptr)},
+          std::make_tuple(_vsShaderModule, entryPoint.c_str(), nullptr)},
          {VK_SHADER_STAGE_FRAGMENT_BIT,
-          make_tuple(_fsShaderModule, entryPoint.c_str(), &specializationInfo)}},
+          std::make_tuple(_fsShaderModule, entryPoint.c_str(), &specializationInfo)}},
         _descriptorSetLayouts,
         // for the scale push constant
         {{

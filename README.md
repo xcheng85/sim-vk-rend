@@ -1,4 +1,10 @@
-# sim-vk-rend
+# sim-vk-rend (unorganized notes)
+
+## msvc compiler version
+
+### MSVC 19.40.33817.0: good version for threading but bad for cuda: 
+The C compiler identification is MSVC 19.40.33817.0
+The CXX compiler identification is MSVC 19.40.33817.0
 
 ## cmake notes
 
@@ -6,6 +12,26 @@
 
 This command is rarely needed when using FetchContent_MakeAvailable(). 
 It is more commonly used as part of implementing the deprecated pattern with FetchContent_Populate()
+
+## cuda and vulkan interop
+
+### step1: extra instance extensions
+
+An application may wish to reference device semaphores in multiple Vulkan logical devices or instances, in multiple processes, and/or in multiple APIs
+
+    extensions.push_back(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
+    extensions.push_back(VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME);
+    extensions.push_back(VK_KHR_EXTERNAL_FENCE_CAPABILITIES_EXTENSION_NAME);
+
+### step2: extra device extensions
+
+VK_KHR_external_memory - device extension
+
+This extension enables an application to export non-Vulkan handles from Vulkan memory objects such that the underlying resources can be referenced outside the scope of the Vulkan logical device that created them.
+
+
+
+### step2: matching device
 
 
 ## multi-threading + command buffer

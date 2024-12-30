@@ -174,12 +174,12 @@ public:
         ASSERT(_rtRayMissShaderModule, "ray miss shader module should be defined");
         ASSERT(_rtRayClosestHitShaderModule, "ray closest hit shader module should be defined");
 
-        const std::string entryPoint{"main"s};
+        const std::string entryPoint{"main"};
         _rtPipelineEntity = _ctx->createRayTracingPipeline(
             {
-                {VK_SHADER_STAGE_RAYGEN_BIT_KHR, make_tuple(_rtRayGenShaderModule, entryPoint.c_str(), nullptr)},
-                {VK_SHADER_STAGE_MISS_BIT_KHR, make_tuple(_rtRayMissShaderModule, entryPoint.c_str(), nullptr)},
-                {VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, make_tuple(_rtRayClosestHitShaderModule, entryPoint.c_str(), nullptr)},
+                {VK_SHADER_STAGE_RAYGEN_BIT_KHR, std::make_tuple(_rtRayGenShaderModule, entryPoint.c_str(), nullptr)},
+                {VK_SHADER_STAGE_MISS_BIT_KHR, std::make_tuple(_rtRayMissShaderModule, entryPoint.c_str(), nullptr)},
+                {VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, std::make_tuple(_rtRayClosestHitShaderModule, entryPoint.c_str(), nullptr)},
             },
             _descriptorSetLayouts,
             {});
@@ -500,7 +500,7 @@ public:
         }
         const auto aiStagingBufferSizeInByte = sizeof(VkAccelerationStructureInstanceKHR) * accelarationInstances.size();
         const auto aiStagingBuffer = _ctx->createBuffer(
-            "TLAS staging buffer"s,
+            "TLAS staging buffer",
             aiStagingBufferSizeInByte,
             // read-only input to an acceleration structure build.
             VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,

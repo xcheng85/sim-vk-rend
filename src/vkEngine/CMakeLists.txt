@@ -8,16 +8,19 @@ target_include_directories(vkEngine PUBLIC .)
 
 message(${stb_SOURCE_DIR})
 
+# volk_headers or volk, refer to the github
 target_link_libraries(
     vkEngine
     GLTFSDK
-    ${Vulkan_LIBRARIES} volk_headers ${RequiredVulkanSDKLIBS}
+    ${Vulkan_LIBRARIES} volk ${RequiredVulkanSDKLIBS}
     TracyClient
     ktx
 )
 
 #glm
-target_compile_definitions(vkEngine PUBLIC -DGLM_ENABLE_EXPERIMENTAL -DVK_PRERECORD_COMMANDS)
+target_compile_definitions(vkEngine PUBLIC -DGLM_ENABLE_EXPERIMENTAL)
+
+#-DVK_PRERECORD_COMMANDS)
 
 target_include_directories(vkEngine PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"

@@ -221,10 +221,10 @@ public:
             {
                 const auto p = frustrum.planes[i];
                 glm::vec3 n(p);
-                glm::vec3 extents(bb.extents[COMPONENT::X], bb.extents[COMPONENT::Y],
-                                  bb.extents[COMPONENT::Z]);
-                glm::vec3 center(bb.center[COMPONENT::X], bb.center[COMPONENT::Y],
-                                 bb.center[COMPONENT::Z]);
+                glm::vec3 extents(bb.extents[0], bb.extents[1],
+                                  bb.extents[2]);
+                glm::vec3 center(bb.center[0], bb.center[1],
+                                 bb.center[2]);
                 float radiusEffective = 0.5 * glm::dot(glm::abs(n), extents);
                 float distFromCenter = glm::dot(center, n) + p.w;
                 const bool shouldBeCulled = (distFromCenter <= -radiusEffective);
@@ -288,14 +288,14 @@ private:
 
             _bb.emplace_back(BoundingBox{
                 .center = glm::vec4(
-                    mesh.center[COMPONENT::X],
-                    mesh.center[COMPONENT::Y],
-                    mesh.center[COMPONENT::Z],
+                    mesh.center[0],
+                    mesh.center[1],
+                    mesh.center[2],
                     1.0f),
                 .extents = glm::vec4(
-                    mesh.extents[COMPONENT::X],
-                    mesh.extents[COMPONENT::Y],
-                    mesh.extents[COMPONENT::Z],
+                    mesh.extents[0],
+                    mesh.extents[1],
+                    mesh.extents[2],
                     1.0f)});
 
             log(Level::Info, "BoundingBox Center: ", _bb.back().center);
@@ -398,13 +398,13 @@ private:
 
     void initComputePipeline()
     {
-        const std::string entryPoint{"main"s};
+        const std::string entryPoint{"main"};
         // layout(push_constant) uniform PushConsts {
         // 	uint count;
         // } MeshesToCull;
         _computePipelineEntity = _ctx->createComputePipeline(
             {{VK_SHADER_STAGE_COMPUTE_BIT,
-              make_tuple(_csShaderModule, entryPoint.c_str(), nullptr)}},
+              std::make_tuple(_csShaderModule, entryPoint.c_str(), nullptr)}},
             _descriptorSetLayouts,
             {{
                 .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,

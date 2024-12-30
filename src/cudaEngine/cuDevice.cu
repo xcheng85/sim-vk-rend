@@ -5,8 +5,6 @@
 
 namespace core::cuda
 {
-    using namespace std;
-
     // from cuda-samples repo
     inline int _ConvertSMVer2Cores(int major, int minor)
     {

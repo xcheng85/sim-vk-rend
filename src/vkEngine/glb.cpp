@@ -6,9 +6,6 @@
 
 #include <glb.h>
 
-#include <vector.h>
-#include <matrix.h>
-#include <quaternion.h>
 #include <misc.h>
 
 std::shared_ptr<Scene> GltfBinaryIOReader::read(const std::string &filePath)
@@ -162,7 +159,7 @@ void readMeshes(const Microsoft::glTF::Document &document,
         // goal to fill in this internal mesh entity
         Mesh currMesh;
         // step1: node's local transform
-        mat4x4f m(1.0f);
+        glm::mat4 m(1.0f);
 
         // nodes's local transformation matrix
         // HasIdentityTRS
@@ -177,23 +174,20 @@ void readMeshes(const Microsoft::glTF::Document &document,
             {
                 for (int j = 0; j < 4; j++)
                 {
-                    m.data[i][j] = document.nodes[i].matrix.values[i * 4 + j];
+                    m[i][j] = document.nodes[i].matrix.values[i * 4 + j];
                 }
             }
         }
         else if (!document.nodes[i].HasIdentityTRS())
         {
-            auto matScale = MatrixScale4x4(document.nodes[i].scale.x, document.nodes[i].scale.y,
-                                           document.nodes[i].scale.z);
-            quatf q(document.nodes[i].rotation.w, document.nodes[i].rotation.x,
-                    document.nodes[i].rotation.y, document.nodes[i].rotation.z);
-
-            auto matRot = RotationMatrixFromQuaternion(q);
-            auto matTranslate = MatrixTranslation4x4(document.nodes[i].translation.x,
-                                                     document.nodes[i].translation.y,
-                                                     document.nodes[i].translation.z);
-
-            m = MatrixMultiply4x4(matTranslate, MatrixMultiply4x4(matRot, matScale));
+            auto matScale = glm::scale(glm::mat4(1.0f), glm::vec3(document.nodes[i].scale.x, document.nodes[i].scale.y, document.nodes[i].scale.z));
+            glm::quat q(document.nodes[i].rotation.w, document.nodes[i].rotation.x, document.nodes[i].rotation.y, document.nodes[i].rotation.z);
+            auto matRot = glm::mat4_cast(q);
+            glm::mat4 matTranslate =
+                glm::translate(glm::mat4(1.0f), glm::vec3(document.nodes[i].translation.x,
+                    document.nodes[i].translation.y,
+                    document.nodes[i].translation.z));
+            m = matTranslate * (matRot * matScale);
         }
         // 2.
         for (auto &primitive : mesh.primitives)
@@ -338,29 +332,29 @@ void readMeshes(const Microsoft::glTF::Document &document,
 
                             currMesh.vertices.emplace_back(vertex);
                             // To Do: calculating Bounding Volumes
-                            if (vertex.vx < currMesh.minAABB[COMPONENT::X])
+                            if (vertex.vx < currMesh.minAABB[0])
                             {
-                                currMesh.minAABB[COMPONENT::X] = vertex.vx;
+                                currMesh.minAABB[0] = vertex.vx;
                             }
-                            if (vertex.vy < currMesh.minAABB[COMPONENT::Y])
+                            if (vertex.vy < currMesh.minAABB[1])
                             {
-                                currMesh.minAABB[COMPONENT::Y] = vertex.vy;
+                                currMesh.minAABB[1] = vertex.vy;
                             }
-                            if (vertex.vz < currMesh.minAABB[COMPONENT::Z])
+                            if (vertex.vz < currMesh.minAABB[2])
                             {
-                                currMesh.minAABB[COMPONENT::Z] = vertex.vz;
+                                currMesh.minAABB[2] = vertex.vz;
                             }
-                            if (vertex.vx > currMesh.maxAABB[COMPONENT::X])
+                            if (vertex.vx > currMesh.maxAABB[0])
                             {
-                                currMesh.maxAABB[COMPONENT::X] = vertex.vx;
+                                currMesh.maxAABB[0] = vertex.vx;
                             }
-                            if (vertex.vy > currMesh.maxAABB[COMPONENT::Y])
+                            if (vertex.vy > currMesh.maxAABB[1])
                             {
-                                currMesh.maxAABB[COMPONENT::Y] = vertex.vy;
+                                currMesh.maxAABB[1] = vertex.vy;
                             }
-                            if (vertex.vz > currMesh.maxAABB[COMPONENT::Z])
+                            if (vertex.vz > currMesh.maxAABB[2])
                             {
-                                currMesh.maxAABB[COMPONENT::Z] = vertex.vz;
+                                currMesh.maxAABB[2] = vertex.vz;
                             }
                         }
                     }
@@ -388,13 +382,13 @@ void readMeshes(const Microsoft::glTF::Document &document,
             currMesh.center = currMesh.minAABB + currMesh.extents * 0.5f;
 
             log(Level::Info,
-                "Extents:", currMesh.extents[COMPONENT::X],
-                ",", currMesh.extents[COMPONENT::Y],
-                ",", currMesh.extents[COMPONENT::Z]);
+                "Extents:", currMesh.extents[0],
+                ",", currMesh.extents[1],
+                ",", currMesh.extents[2]);
             log(Level::Info,
-                "Center:", currMesh.center[COMPONENT::X],
-                ",", currMesh.center[COMPONENT::Y],
-                ",", currMesh.center[COMPONENT::Z]);
+                "Center:", currMesh.center[0],
+                ",", currMesh.center[1],
+                ",", currMesh.center[2]);
 
             log(Level::Info, indirectDraw);
 
@@ -446,9 +440,9 @@ void readMaterials(const Microsoft::glTF::Document &document, Scene &outputScene
                 mat.metallicRoughness.metallicRoughnessTexture.textureId);
         }
         curr.basecolorSamplerId = 0;
-        curr.basecolor = vec4f(std::array{
+        curr.basecolor = glm::vec4(
             mat.metallicRoughness.baseColorFactor.r, mat.metallicRoughness.baseColorFactor.g,
-            mat.metallicRoughness.baseColorFactor.b, mat.metallicRoughness.baseColorFactor.a});
+            mat.metallicRoughness.baseColorFactor.b, mat.metallicRoughness.baseColorFactor.a);
         outputScene.materials.emplace_back(curr);
     }
 }

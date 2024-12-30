@@ -15,12 +15,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
 
-#include <vector.h>
-#include <matrix.h>
-#include <quaternion.h>
-#include <fp.h>
 
-using namespace std;
 
 class ArcballCamera : public CameraBase
 {
@@ -114,24 +109,24 @@ public:
     void handleMouseCursorEvent(
         int button,
         int state,
-        const vec2i &currMouseInScreenSpace,
-        const vec2i &screenDimension) override
+        const glm::ivec2 &currMouseInScreenSpace,
+        const glm::ivec2&screenDimension) override
     {
-        const vec2f currMouseCoordsInNdc = screenSpace2Ndc(currMouseInScreenSpace, screenDimension);
-        if (_prevMouseCoordsInNdc != vec2f(-2.f))
+        const auto currMouseCoordsInNdc = screenSpace2Ndc(currMouseInScreenSpace, screenDimension);
+        if (_prevMouseCoordsInNdc != glm::vec2(-2.f, -2.f))
         {
             if (state & SDL_BUTTON_LMASK)
             {
                 rotate(
-                    glm::vec2(_prevMouseCoordsInNdc[COMPONENT::X], _prevMouseCoordsInNdc[COMPONENT::Y]),
-                    glm::vec2(currMouseCoordsInNdc[COMPONENT::X], currMouseCoordsInNdc[COMPONENT::Y]));
+                    glm::vec2(_prevMouseCoordsInNdc[0], _prevMouseCoordsInNdc[1]),
+                    glm::vec2(currMouseCoordsInNdc[0], currMouseCoordsInNdc[1]));
             }
             else if (state & SDL_BUTTON_RMASK)
             {
-                auto proj = glm::perspective(glm::radians(_verticalFov), (float)screenDimension[COMPONENT::X] / (float)screenDimension[COMPONENT::Y], _nearPlaneD, _farPlaneD);
+                auto proj = glm::perspective(glm::radians(_verticalFov), (float)screenDimension[0] / (float)screenDimension[1], _nearPlaneD, _farPlaneD);
                 auto projInverse = glm::inverse(proj);
                 auto delta = currMouseCoordsInNdc - _prevMouseCoordsInNdc;
-                glm::vec4 dxy4 = projInverse * glm::vec4(delta[COMPONENT::X], delta[COMPONENT::Y], 0, 1);
+                glm::vec4 dxy4 = projInverse * glm::vec4(delta[0], delta[1], 0, 1);
                 pan(glm::vec2(dxy4.x, dxy4.y));
             }
         }
@@ -153,7 +148,8 @@ public:
     }
 
     // http://www.lighthouse3d.com/tutorials/view-frustum-culling/geometric-approach-extracting-the-planes/
-    virtual Fustrum fustrumPlanes() const override
+
+    virtual Fustrum fustrumPlanes() const
     {
         // A couple more unit vectors are required,
         // namely the up vector and the right vector.

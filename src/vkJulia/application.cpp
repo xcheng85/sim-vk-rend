@@ -1,7 +1,6 @@
 #include <format>
 #include <random>
 #include <application.h>
-#include <window.h>
 #include <context.h>
 #include <cameraBase.h>
 
@@ -14,7 +13,10 @@
 #include <scene.h>
 #include <mathUtils.h>
 #include <julia.h>
+#include <cuDevice.h>
+#include <cuPredefines.h>
 
+// #define VK_USE_PLATFORM_WIN32_KHR
 #define VK_NO_PROTOTYPES // for volk
 #define VOLK_IMPLEMENTATION
 
@@ -27,12 +29,16 @@ static constexpr int MAX_DESCRIPTOR_SETS = 1 * MAX_FRAMES_IN_FLIGHT + 1 + 4;
 #define DEFAULT_FENCE_TIMEOUT 100000000000
 
 using namespace vkEngine::math;
+using namespace cudaEngine;
 
 enum DESC_LAYOUT_SEMANTIC : int
 {
     TEX_SAMP = 0,
     DESC_LAYOUT_SEMANTIC_SIZE
 };
+
+#include <cuda.h>
+#include <cuda_runtime.h>
 
 void VkApplication::init()
 {
@@ -57,6 +63,8 @@ void VkApplication::init()
     // prebuild command buffers for all swapchain images; no one-time flag
     recordCommandBuffersForAllSwapChainImage();
 #endif
+    auto logicalDevice = _ctx.getLogicDevice();
+    getVkImageMemoryHandle(logicalDevice, VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT);
 }
 
 void VkApplication::teardown()
@@ -171,13 +179,13 @@ void VkApplication::allocateDescriptorSets()
 void VkApplication::createGraphicsPipeline()
 {
     // life cycle of string must be longer.
-    const std::string entryPoint{"main"s};
+    const std::string entryPoint{"main"};
 
     _graphicsPipelineEntity = _ctx.createGraphicsPipeline(
         {{VK_SHADER_STAGE_VERTEX_BIT,
-          make_tuple(_vsShaderModule, entryPoint.c_str(), nullptr)},
+          std::make_tuple(_vsShaderModule, entryPoint.c_str(), nullptr)},
          {VK_SHADER_STAGE_FRAGMENT_BIT,
-          make_tuple(_fsShaderModule, entryPoint.c_str(), nullptr)}},
+          std::make_tuple(_fsShaderModule, entryPoint.c_str(), nullptr)}},
         _descriptorSetLayouts,
         // for push constant
         {},

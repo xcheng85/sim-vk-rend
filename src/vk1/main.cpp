@@ -36,7 +36,7 @@
 // #include <orbitCamera.h>
 #include <arcballCamera.h>
 
-using namespace core::cuda;
+using namespace cudaEngine;
 
 bool gRunning = true;
 double gDt{0};

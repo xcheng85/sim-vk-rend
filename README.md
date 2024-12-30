@@ -2,9 +2,17 @@
 
 ## msvc compiler version
 
+install multiple msvc compiler in windows 11
+do both installation in vs 2022 and vs build tool 2022
+
 ### MSVC 19.40.33817.0: good version for threading but bad for cuda: 
 The C compiler identification is MSVC 19.40.33817.0
 The CXX compiler identification is MSVC 19.40.33817.0
+
+### older msvc compiler: specify compiler 
+cmake ... -T v143,version=14.38
+Either remove the CMakeCache.txt file and CMakeFiles directory or choose a different binary directory.
+access violation in vulkan driver api was ran into.
 
 ## cmake notes
 

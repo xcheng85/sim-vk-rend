@@ -19,7 +19,10 @@ target_compile_options(${LIB} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:
                       >)
 
 # https://cmake.org/cmake/help/latest/module/FindCUDAToolkit.html
-target_link_libraries(${LIB} PRIVATE CUDA::cudart)
+target_link_libraries(${LIB} PRIVATE CUDA::cudart     
+  ${Vulkan_LIBRARIES} 
+  volk )
+
 target_include_directories(${LIB} PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
   "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/${LIB}>"

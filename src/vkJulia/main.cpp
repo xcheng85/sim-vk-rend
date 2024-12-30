@@ -33,7 +33,7 @@
 #include <context.h>
 #include <arcballCamera.h>
 
-using namespace core::cuda;
+using namespace cudaEngine;
 
 bool gRunning = true;
 double gDt{0};
@@ -95,6 +95,7 @@ inline const std::set<std::string> &getInstanceExtensions()
 int main(int argc, char **argv)
 {
     selectDevice();
+    
     ArcballCamera _orbitCamera{
         glm::vec3(0.0038983f, -0.142875f, 0.6f),        // pos
         glm::vec3(0.00238983f, -0.142875f, 0.1381729f), // target -z

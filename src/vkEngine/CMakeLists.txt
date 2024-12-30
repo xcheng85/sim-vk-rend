@@ -12,7 +12,9 @@ message(${stb_SOURCE_DIR})
 target_link_libraries(
     vkEngine
     GLTFSDK
-    ${Vulkan_LIBRARIES} volk ${RequiredVulkanSDKLIBS}
+    ${Vulkan_LIBRARIES} 
+    volk 
+    ${RequiredVulkanSDKLIBS}
     TracyClient
     ktx
 )

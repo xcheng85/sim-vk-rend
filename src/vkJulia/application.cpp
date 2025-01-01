@@ -523,7 +523,6 @@ void VkApplication::loadTextures()
     _samplerEntities.emplace_back(_ctx.createSampler("sampler0"));
 }
 
-
 void VkApplication::prepareCudaInterop()
 {
     const VkDeviceSize bufferSizeInBytes = 100;
@@ -534,4 +533,18 @@ void VkApplication::prepareCudaInterop()
         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         VK_SHARING_MODE_EXCLUSIVE,
         true); // mapping when createBuffer
+
+    const auto handle = std::get<BUFFER_ENTITY_UID::EXPORT_HANDLE>(cudaInteropBuffer);
+    cudaExternalMemoryHandleDesc externalMemoryHandleDesc{};
+    // windows11
+    externalMemoryHandleDesc.type = cudaExternalMemoryHandleTypeOpaqueWin32;
+    externalMemoryHandleDesc.size = bufferSizeInBytes;
+
+#ifdef _WIN64
+    externalMemoryHandleDesc.handle.win32.handle = handle;
+#else
+
+#endif
+    cudaExternalMemory_t cudaExtMemoryBuffer;
+    CUDA_CHECK(cudaImportExternalMemory(&cudaExtMemoryBuffer, &externalMemoryHandleDesc));
 }

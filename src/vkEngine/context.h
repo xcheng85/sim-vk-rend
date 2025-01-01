@@ -34,6 +34,7 @@
 // must ahead of <vk_mem_alloc.h>, or else it will crash on vk functions
 #ifndef __ANDROID__
 #define VK_NO_PROTOTYPES // for volk
+#define NOMINMAX
 #include "volk.h"
 #endif
 // To do it properly:
@@ -104,7 +105,9 @@ using MappingAddressType = void *;
 // VkDeviceOrHostAddressConstKHR: Union specifying a const device or host address
 // Gpu device local buffer: 64bit address could be accessed by shader
 // staging buffer: void*
-using BufferEntity = std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo, MappingAddressType, VkDeviceSize, VkDeviceOrHostAddressConstKHR>;
+using BufferEntity = std::tuple<VkBuffer, VmaAllocation, VmaAllocationInfo, MappingAddressType, VkDeviceSize,
+                                VkDeviceOrHostAddressConstKHR,
+                                void *>;
 enum BUFFER_ENTITY_UID : int
 {
     BUFFER = 0,
@@ -112,7 +115,8 @@ enum BUFFER_ENTITY_UID : int
     VMA_ALLOCATION_INFO,
     MAPPING_ADDRESS,
     BUFFER_SIZE,
-    DEVICE_HOST_ADDRESS
+    DEVICE_HOST_ADDRESS,
+    EXPORT_HANDLE,
 };
 
 using ASEntity = std::tuple<BufferEntity, VkAccelerationStructureKHR, VkDeviceAddress>;
@@ -215,6 +219,13 @@ public:
         VkMemoryPropertyFlags requiredMemoryProperties,
         VkMemoryPropertyFlags preferredMemoryProperties,
         VmaMemoryUsage memoryUsage,
+        bool mapping = false);
+
+    BufferEntity createExportableBuffer(
+        const std::string &name,
+        VkDeviceSize bufferSizeInBytes,
+        VkBufferUsageFlags bufferUsageFlag,
+        VkSharingMode bufferSharingMode,
         bool mapping = false);
 
     ImageEntity createImage(
@@ -342,7 +353,7 @@ public:
     const CommandBufferEntity &getCommandBufferForTransferOnly() const;
     // get command buffer for active frame: fits non pre-recorded commandbuffer
     std::pair<uint32_t, CommandBufferEntity> getCommandBufferForRendering() const;
-    std::vector<CommandBufferEntity>& getCommandBufferForRenderingForAllSwapChains();
+    std::vector<CommandBufferEntity> &getCommandBufferForRenderingForAllSwapChains();
 
     // let application to access the tracy
     TracyVkCtx getTracyContext() const;

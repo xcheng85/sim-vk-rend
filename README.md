@@ -39,8 +39,47 @@ This extension enables an application to export non-Vulkan handles from Vulkan m
 
 
 
-### step2: matching device
+### step3: matching device
 
+
+### step4: for images
+steps when create vulkan image: 
+
+1. create memory for the image: vkAllocateMemory
+2. bind the memory to the image handle: vkBindImageMemory
+
+everything is hidden inside function: vmaCreateImage
+
+extra stuff for cuda interop
+
+
+3. vkGetMemoryWin32HandleKHR to get the handle of that device memory in step 1. 
+it is hidden in the api: vmaGetMemoryWin32Handle in vma 
+
+4. how to adapt following two extra struct into vma usage ? 
+
+VkExternalMemoryImageCreateInfo
+VkExportMemoryAllocateInfo
+
+5. vma custom memory pool
+why? 
+Use extra parameters for a set of your allocations that are available in VmaPoolCreateInfo but not in VmaAllocationCreateInfo - e.g., custom minimum alignment, custom pNext chain.
+
+    Optional, can be null. If not null, it must point to a `pNext` chain of structures that can be attached to `VkMemoryAllocateInfo`.
+    It can be useful for special needs such as adding `VkExportMemoryAllocateInfoKHR`.
+
+need to focus the following: 
+
+    const VmaAllocationCreateInfo allocCreateInfo = {
+        .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+        .usage = memoryFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+                     ? VMA_MEMORY_USAGE_AUTO_PREFER_HOST
+                     : VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+        .priority = 1.0f,
+    };
+
+
+refer to the unit test "static void TestWin32Handles()" of vma_allocator repo
 
 ## multi-threading + command buffer
 1. separate command pool per thread

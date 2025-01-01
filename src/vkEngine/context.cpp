@@ -10,6 +10,10 @@
 #include <queuethreadsafe.h>
 #include <future> //packaged_task<>
 
+#ifdef _WIN64
+#include <windows.h>
+#endif
+
 #define VK_NO_PROTOTYPES // for volk
 #define VOLK_IMPLEMENTATION
 
@@ -208,6 +212,16 @@ public:
         VmaMemoryUsage memoryUsage,
         bool mapping = false);
 
+    // for cuda interop
+
+#ifdef _WIN64
+    BufferEntity createExportableBuffer(
+        const std::string &name,
+        VkDeviceSize bufferSizeInBytes,
+        VkBufferUsageFlags bufferUsageFlag,
+        VkSharingMode bufferSharingMode,
+        bool mapping = false);
+#endif
     std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> allocateDescriptorSet(
         const VkDescriptorPool pool,
         const std::unordered_map<VkDescriptorSetLayout *, uint32_t> &dsAllocation);
@@ -1254,7 +1268,6 @@ void VkContext::Impl::createCommandPool()
 void VkContext::Impl::createVMA()
 {
     // https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
-
     const VmaVulkanFunctions vulkanFunctions = {
         .vkGetInstanceProcAddr = vkGetInstanceProcAddr,
         .vkGetDeviceProcAddr = vkGetDeviceProcAddr,
@@ -1285,6 +1298,10 @@ void VkContext::Impl::createVMA()
 #if VMA_VULKAN_VERSION >= 1003000
         .vkGetDeviceBufferMemoryRequirements = vkGetDeviceBufferMemoryRequirements,
         .vkGetDeviceImageMemoryRequirements = vkGetDeviceImageMemoryRequirements,
+#endif
+// extra registeration for cuda interop
+#ifdef _WIN64
+        .vkGetMemoryWin32HandleKHR = vkGetMemoryWin32HandleKHR,
 #endif
     };
 
@@ -1670,7 +1687,7 @@ void VkContext::Impl::BeginRecordCommandBuffer(CommandBufferEntity &cmdBufferEnt
     //  specifies that each recording of the command buffer will only be submitted once,
     //  and the command buffer will be reset and recorded again between each submission.
 #ifndef VK_PRERECORD_COMMANDS
-    //log(Level::Info, "command buffer created with VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT");
+    // log(Level::Info, "command buffer created with VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT");
     cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 #endif
     VK_CHECK(vkBeginCommandBuffer(cmdBufferHandle, &cmdBufferBeginInfo));
@@ -1700,6 +1717,9 @@ void VkContext::Impl::createTracyContext()
     _tracyCtx = TracyVkContext(_selectedPhysicalDevice, _logicalDevice, _graphicsComputeQueue, cmdBuffer);
 }
 
+// vma:
+// If you want to create a buffer or an image, allocate memory for it, and bind them together, all in one call,
+// you can use function vmaCreateBuffer(), vmaCreateImage(). This is the easiest and recommended way to use this library!
 BufferEntity VkContext::Impl::createBuffer(
     const std::string &name,
     VkDeviceSize bufferSizeInBytes,
@@ -1721,12 +1741,27 @@ BufferEntity VkContext::Impl::createBuffer(
         .sharingMode = bufferSharingMode,
     };
 
+    // VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+
+    // VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+    // VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+    // VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+    // VMA_MEMORY_USAGE_GPU_ONLY);
+
     const VmaAllocationCreateInfo bufferMemoryAllocationCreateInfo = {
         .flags = memoryAllocationFlag,
         .usage = memoryUsage,
         .requiredFlags = requiredMemoryProperties,
         .preferredFlags = preferredMemoryProperties,
     };
+
+    // const VmaAllocationCreateInfo allocCreateInfo = {
+    //     .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+    //     .usage = memoryFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+    //                  ? VMA_MEMORY_USAGE_AUTO_PREFER_HOST
+    //                  : VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+    //     .priority = 1.0f,
+    // };
 
     VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
                              &bufferMemoryAllocationCreateInfo,
@@ -1741,14 +1776,88 @@ BufferEntity VkContext::Impl::createBuffer(
     };
     vmaGetAllocationInfo(_vmaAllocator, allocation, &allocationInfo);
     if (!mapping)
-        return std::make_tuple(buffer, allocation, allocationInfo, nullptr, bufferSizeInBytes, da);
+        return std::make_tuple(buffer, allocation, allocationInfo, nullptr, bufferSizeInBytes, da, nullptr);
     else
     {
         MappingAddressType address;
         VK_CHECK(vmaMapMemory(_vmaAllocator, allocation, &address));
-        return std::make_tuple(buffer, allocation, allocationInfo, address, bufferSizeInBytes, da);
+        return std::make_tuple(buffer, allocation, allocationInfo, address, bufferSizeInBytes, da, nullptr);
     }
 }
+
+#ifdef _WIN64
+BufferEntity VkContext::Impl::createExportableBuffer(
+    const std::string &name,
+    VkDeviceSize bufferSizeInBytes,
+    VkBufferUsageFlags bufferUsageFlag,
+    VkSharingMode bufferSharingMode,
+    bool mapping)
+{
+    constexpr static VkExportMemoryAllocateInfoKHR exportMemAllocInfo{
+        VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO_KHR,
+        nullptr,
+        VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT};
+
+    constexpr static VkExternalMemoryBufferCreateInfoKHR externalMemBufCreateInfo{
+        VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO_KHR,
+        nullptr,
+        VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT};
+
+    VkBuffer buffer{VK_NULL_HANDLE};
+    VmaAllocation allocation{VK_NULL_HANDLE};
+    VmaAllocationInfo allocationInfo;
+    VkBufferCreateInfo bufferCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = bufferSizeInBytes,
+        .usage = bufferUsageFlag,
+        .sharingMode = bufferSharingMode,
+    };
+    bufferCreateInfo.pNext = &externalMemBufCreateInfo;
+
+    VmaAllocationCreateInfo bufferMemoryAllocationCreateInfo = {
+        .usage = VMA_MEMORY_USAGE_AUTO,
+    };
+
+    uint32_t memTypeIndex = UINT32_MAX;
+    VK_CHECK(vmaFindMemoryTypeIndexForBufferInfo(_vmaAllocator, &bufferCreateInfo, &bufferMemoryAllocationCreateInfo, &memTypeIndex));
+    log(Level::Info, "memTypeIndex: ", memTypeIndex);
+
+    VmaPoolCreateInfo poolCreateInfo = {};
+    poolCreateInfo.memoryTypeIndex = memTypeIndex;
+    poolCreateInfo.pMemoryAllocateNext = (void *)&exportMemAllocInfo;
+
+    VmaPool pool{VK_NULL_HANDLE};
+    VK_CHECK(vmaCreatePool(_vmaAllocator, &poolCreateInfo, &pool));
+
+    bufferMemoryAllocationCreateInfo.pool = pool;
+
+    VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
+                             &bufferMemoryAllocationCreateInfo,
+                             &buffer,
+                             &allocation, nullptr));
+
+    HANDLE handle = NULL;
+    VK_CHECK(vmaGetMemoryWin32Handle(_vmaAllocator, allocation, nullptr, &handle));
+
+    VkBufferDeviceAddressInfoKHR bufferDeviceAI{};
+    bufferDeviceAI.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    bufferDeviceAI.buffer = buffer;
+    VkDeviceOrHostAddressConstKHR da{
+        .deviceAddress = vkGetBufferDeviceAddressKHR(_logicalDevice, &bufferDeviceAI),
+    };
+    vmaGetAllocationInfo(_vmaAllocator, allocation, &allocationInfo);
+    // bufferMemoryAllocationCreateInfo does not have config to allow map
+    return std::make_tuple(buffer, allocation, allocationInfo, nullptr, bufferSizeInBytes, da, handle); 
+    // if (!mapping)
+    //     return std::make_tuple(buffer, allocation, allocationInfo, nullptr, bufferSizeInBytes, da, handle);
+    // else
+    // {
+    //     MappingAddressType address;
+    //     VK_CHECK(vmaMapMemory(_vmaAllocator, allocation, &address));
+    //     return std::make_tuple(buffer, allocation, allocationInfo, address, bufferSizeInBytes, da, handle);
+    // }
+}
+#endif
 
 BufferEntity VkContext::Impl::createPersistentBuffer(
     const std::string &name,
@@ -1779,6 +1888,7 @@ BufferEntity VkContext::Impl::createPersistentBuffer(
 
 BufferEntity VkContext::Impl::createStagingBuffer(const std::string &name, VkDeviceSize bufferSizeInBytes)
 {
+    // VMA_MEMORY_USAGE_CPU_ONLY is obosolete
     return createBuffer(
         name,
         bufferSizeInBytes,
@@ -1790,7 +1900,7 @@ BufferEntity VkContext::Impl::createStagingBuffer(const std::string &name, VkDev
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        VMA_MEMORY_USAGE_CPU_ONLY);
+        VMA_MEMORY_USAGE_AUTO_PREFER_HOST);
 }
 
 BufferEntity VkContext::Impl::createDeviceLocalBuffer(
@@ -1798,15 +1908,16 @@ BufferEntity VkContext::Impl::createDeviceLocalBuffer(
     VkDeviceSize bufferSizeInBytes,
     VkBufferUsageFlags bufferUsageFlag)
 {
+    // VMA_MEMORY_USAGE_GPU_ONLY is deprecated
     return createBuffer(
         name,
         bufferSizeInBytes,
         bufferUsageFlag,
         VK_SHARING_MODE_EXCLUSIVE,
         VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
-        VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-        VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-        VMA_MEMORY_USAGE_GPU_ONLY);
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
 }
 
 std::tuple<BufferEntity, VkStridedDeviceAddressRegionKHR> VkContext::Impl::createShaderBindTableBuffer(
@@ -1871,7 +1982,11 @@ ImageEntity VkContext::Impl::createImage(
     imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     imageCreateInfo.extent = extent;
+
     // no need for VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT, cpu does not need access
+    // Consider creating them as dedicated allocations using VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT, especially if they are large or if you plan to destroy and recreate them with different sizes
+    // e.g. when display resolution changes.
+
     const VmaAllocationCreateInfo allocCreateInfo = {
         .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
         .usage = memoryFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
@@ -1879,6 +1994,7 @@ ImageEntity VkContext::Impl::createImage(
                      : VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
         .priority = 1.0f,
     };
+
     VkImage image;
     VmaAllocation imageAllocation;
     VmaAllocationInfo imageAllocationInfo;
@@ -1903,7 +2019,7 @@ ImageEntity VkContext::Impl::createImage(
     VK_CHECK(vkCreateImageView(_logicalDevice, &imageViewInfo, nullptr, &imageView));
 
     return std::make_tuple(image, imageView, imageAllocation, imageAllocationInfo, textureMipLevelCount,
-                      extent, format);
+                           extent, format);
 }
 
 std::tuple<VkSampler> VkContext::Impl::createSampler(const std::string &name)
@@ -2887,6 +3003,21 @@ BufferEntity VkContext::createBuffer(
         requiredMemoryProperties,
         preferredMemoryProperties,
         memoryUsage,
+        mapping);
+}
+
+BufferEntity VkContext::createExportableBuffer(
+    const std::string &name,
+    VkDeviceSize bufferSizeInBytes,
+    VkBufferUsageFlags bufferUsageFlag,
+    VkSharingMode bufferSharingMode,
+    bool mapping)
+{
+    return _pimpl->createExportableBuffer(
+        name,
+        bufferSizeInBytes,
+        bufferUsageFlag,
+        bufferSharingMode,
         mapping);
 }
 

@@ -63,8 +63,8 @@ void VkApplication::init()
     // prebuild command buffers for all swapchain images; no one-time flag
     recordCommandBuffersForAllSwapChainImage();
 #endif
-    auto logicalDevice = _ctx.getLogicDevice();
-    getVkImageMemoryHandle(logicalDevice, VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT);
+
+    prepareCudaInterop();
 }
 
 void VkApplication::teardown()
@@ -521,4 +521,17 @@ void VkApplication::loadTextures()
     }
 
     _samplerEntities.emplace_back(_ctx.createSampler("sampler0"));
+}
+
+
+void VkApplication::prepareCudaInterop()
+{
+    const VkDeviceSize bufferSizeInBytes = 100;
+    const auto cudaInteropBuffer = _ctx.createExportableBuffer(
+        "cuda interop buffer",
+        bufferSizeInBytes,
+        // read-only input to an acceleration structure build.
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        VK_SHARING_MODE_EXCLUSIVE,
+        true); // mapping when createBuffer
 }

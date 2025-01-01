@@ -30,7 +30,6 @@
 #include <array>
 #include <filesystem> // for shader
 
-
 // must ahead of <vk_mem_alloc.h>, or else it will crash on vk functions
 #ifndef __ANDROID__
 #define VK_NO_PROTOTYPES // for volk
@@ -119,6 +118,7 @@ private:
     void postHostDeviceIO();
 
     void loadTextures();
+    void prepareCudaInterop();
 
     VkContext &_ctx;
 

@@ -64,13 +64,16 @@ void VkApplication::init()
     recordCommandBuffersForAllSwapChainImage();
 #endif
 
-    prepareCudaInterop();
+    initCudaInterop();
 }
 
 void VkApplication::teardown()
 {
     auto logicalDevice = _ctx.getLogicDevice();
     auto vmaAllocator = _ctx.getVmaAllocator();
+
+    teardownCudaInterop();
+
     vkDeviceWaitIdle(logicalDevice);
     deleteSwapChain();
 
@@ -467,48 +470,17 @@ void VkApplication::loadTextures()
     _imageStagingBuffers.emplace_back(_ctx.createStagingBuffer(
         "Staging Buffer Texture_0",
         stagingBufferSizeForImage));
-
-    // io commands
     auto cmdBuffersForIO = _ctx.getCommandBufferForIO();
-    _ctx.BeginRecordCommandBuffer(cmdBuffersForIO);
-
-    _ctx.writeImage(
+    _ctx.submitWriteImageCommand(
         _imageEntities.back(),
         _imageStagingBuffers.back(),
         cmdBuffersForIO,
-        _texture->data());
+        _texture->data(),
+        {},
+        std::nullopt,
+        {});
 
-    _ctx.EndRecordCommandBuffer(cmdBuffersForIO);
-
-    const auto commandBuffer = std::get<COMMAND_BUFFER_ENTITY_OFFSET::COMMAND_BUFFER>(cmdBuffersForIO);
-    const auto fence = std::get<COMMAND_BUFFER_ENTITY_OFFSET::FENCE>(cmdBuffersForIO);
-    const auto cmdQueue = std::get<COMMAND_BUFFER_ENTITY_OFFSET::QUEUE>(cmdBuffersForIO);
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.waitSemaphoreCount = 0;
-    submitInfo.pWaitSemaphores = VK_NULL_HANDLE;
-    // This depends on nobody
-    // // only useful when having waitsemaphore
-    // submitInfo.pWaitDstStageMask = &flags;
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffer;
-    // no body depends on him as well
-    submitInfo.signalSemaphoreCount = 0;
-    submitInfo.pSignalSemaphores = VK_NULL_HANDLE;
-
-    // must reset fence of waiting (Signal -> not signal, due to initally fence is created with state "signaled")
-    auto logicalDevice = _ctx.getLogicDevice();
-    VK_CHECK(vkResetFences(logicalDevice, 1, &fence));
-    // This will change state of fence to signaled
-    VK_CHECK(vkQueueSubmit(cmdQueue, 1, &submitInfo, fence));
-    const auto result = vkWaitForFences(logicalDevice, 1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT);
-    if (result == VK_TIMEOUT)
-    {
-        // should not happen
-        ASSERT(false, "vkWaitForFences somehow Timed out !");
-        vkDeviceWaitIdle(logicalDevice);
-    }
+    _ctx.testTemplate(&VkContext::test, &_ctx, 0, 1);
 
     // staging (pinned buffer in host is not needed anymore, clean)
     auto vmaAllocator = _ctx.getVmaAllocator();
@@ -523,7 +495,7 @@ void VkApplication::loadTextures()
     _samplerEntities.emplace_back(_ctx.createSampler("sampler0"));
 }
 
-void VkApplication::prepareCudaInterop()
+void VkApplication::initCudaInterop()
 {
     const VkDeviceSize bufferSizeInBytes = 100;
     const auto cudaInteropBuffer = _ctx.createExportableBuffer(
@@ -547,4 +519,126 @@ void VkApplication::prepareCudaInterop()
 #endif
     cudaExternalMemory_t cudaExtMemoryBuffer;
     CUDA_CHECK(cudaImportExternalMemory(&cudaExtMemoryBuffer, &externalMemoryHandleDesc));
+
+    // cuda<->vk sync objects
+    auto logicalDevice = _ctx.getLogicDevice();
+    VkSemaphoreCreateInfo semaphoreInfo{};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    VkExportSemaphoreCreateInfoKHR vulkanExportSemaphoreCreateInfo = {};
+    vulkanExportSemaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO_KHR;
+    vulkanExportSemaphoreCreateInfo.pNext = NULL;
+
+#ifdef _WIN64
+    // WindowsSecurityAttributes winSecurityAttributes;
+    VkExportSemaphoreWin32HandleInfoKHR vulkanExportSemaphoreWin32HandleInfoKHR = {};
+    vulkanExportSemaphoreWin32HandleInfoKHR.sType = VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_WIN32_HANDLE_INFO_KHR;
+    vulkanExportSemaphoreWin32HandleInfoKHR.pNext = NULL;
+    // vulkanExportSemaphoreWin32HandleInfoKHR.pAttributes = &winSecurityAttributes;
+    // vulkanExportSemaphoreWin32HandleInfoKHR.dwAccess = DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE;
+    vulkanExportSemaphoreWin32HandleInfoKHR.name = (LPCWSTR)NULL;
+
+    vulkanExportSemaphoreCreateInfo.pNext = &vulkanExportSemaphoreWin32HandleInfoKHR;
+    vulkanExportSemaphoreCreateInfo.handleTypes = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+#else
+    // linux
+    vulkanExportSemaphoreCreateInfo.handleTypes = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
+#endif
+    semaphoreInfo.pNext = &vulkanExportSemaphoreCreateInfo;
+    VK_CHECK(vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &_cuToVkSemaphore));
+    VK_CHECK(vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &_vkToCuSemaphore));
+
+    // get os-dependent handle
+#ifdef _WIN64
+    VkSemaphoreGetWin32HandleInfoKHR vulkanSemaphoreGetWin32HandleInfoKHR = {};
+    vulkanSemaphoreGetWin32HandleInfoKHR.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_WIN32_HANDLE_INFO_KHR;
+    vulkanSemaphoreGetWin32HandleInfoKHR.pNext = NULL;
+    vulkanSemaphoreGetWin32HandleInfoKHR.semaphore = _cuToVkSemaphore;
+    vulkanSemaphoreGetWin32HandleInfoKHR.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+    vkGetSemaphoreWin32HandleKHR(logicalDevice, &vulkanSemaphoreGetWin32HandleInfoKHR, &_cuToVkSemaphoreHandle);
+
+    vulkanSemaphoreGetWin32HandleInfoKHR.semaphore = _vkToCuSemaphore;
+    vkGetSemaphoreWin32HandleKHR(logicalDevice, &vulkanSemaphoreGetWin32HandleInfoKHR, &_vkToCuSemaphoreHandle);
+#else
+
+#endif
+    // export semaphore to cuda
+    cudaExternalSemaphoreHandleDesc externalSemaphoreHandleDesc{};
+    externalSemaphoreHandleDesc.flags = 0;
+#ifdef _WIN64
+    externalSemaphoreHandleDesc.type = cudaExternalSemaphoreHandleTypeOpaqueWin32;
+    externalSemaphoreHandleDesc.handle.win32.handle = _cuToVkSemaphoreHandle;
+#else
+#endif
+    CUDA_CHECK(cudaImportExternalSemaphore(&_cuToVkExportedSemaphore, &externalSemaphoreHandleDesc));
+
+    externalSemaphoreHandleDesc.handle.win32.handle = _vkToCuSemaphoreHandle;
+    CUDA_CHECK(cudaImportExternalSemaphore(&_vkToCuExportedSSemaphore, &externalSemaphoreHandleDesc));
+
+    // TEST IMAGE
+    VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
+    cuComplexf c(-0.88f, 0.18f);
+    auto _texture = std::make_unique<JuliaSet>(512, 1.5f, 200, c);
+    const auto textureMipLevels = getMipLevelsCount(_texture->width(),
+                                                    _texture->height());
+    const VkExtent3D textureExtent = {static_cast<uint32_t>(_texture->width()),
+                                      static_cast<uint32_t>(_texture->height()), 1};
+    _ctx.createExportableImage(
+        "cuda_interop_image_0",
+        VK_IMAGE_TYPE_2D,
+        VK_FORMAT_R8G8B8A8_UNORM,
+        textureExtent,
+        textureMipLevels,
+        VK_SAMPLE_COUNT_1_BIT,
+        // VK_IMAGE_USAGE_TRANSFER_SRC_BIT: should automaticaly VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+        VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+
+    // write data to image
+
+    // ctx->BeginRecordCommandBuffer(cmdBufferForGraphics);
+    // const auto srcQueueFamilyIndex = std::get<3>(cmdBufferForTransferOnly);
+    // const auto graphicsBufferHandle = std::get<1>(cmdBufferForGraphics);
+    // const auto graphicsBufferFence = std::get<2>(cmdBufferForGraphics);
+    // const auto dstQueueFamilyIndex = std::get<3>(cmdBufferForGraphics);
+    // const auto graphicsCmdQueue = std::get<4>(cmdBufferForGraphics);
+
+    // // step2: acqure the ownership from transfer queue
+    // ctx->acquireQueueFamilyOwnership(
+    //     cmdBufferForGraphics,
+    //     image,
+    //     srcQueueFamilyIndex,
+    //     dstQueueFamilyIndex);
+    // ctx->generateMipmaps(
+    //     image,
+    //     cmdBufferForGraphics);
+    // ctx->EndRecordCommandBuffer(cmdBufferForGraphics);
+
+    // // blit image is done at the stage color_attachment_output(write image)
+    // const VkPipelineStageFlags flags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    // // uploadTextureToGPU does not need to wait for any previous op
+    // // semaphore wait on transfer.
+    // VkSubmitInfo submitInfo{};
+    // submitInfo.waitSemaphoreCount = 1;
+    // submitInfo.pWaitSemaphores = &semaphoreFromTransfer;
+    // submitInfo.pWaitDstStageMask = &flags;
+    // submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    // submitInfo.commandBufferCount = 1;
+    // submitInfo.pCommandBuffers = &graphicsBufferHandle;
+    // submitInfo.signalSemaphoreCount = 0;
+    // submitInfo.pSignalSemaphores = VK_NULL_HANDLE;
+
+    // // must resetfence of waiting
+    // VK_CHECK(vkResetFences(ctx->getLogicDevice(), 1, &graphicsBufferFence));
+    // VK_CHECK(vkQueueSubmit(graphicsCmdQueue, 1, &submitInfo, graphicsBufferFence));
+}
+
+void VkApplication::teardownCudaInterop()
+{
+    auto logicalDevice = _ctx.getLogicDevice();
+
+    CUDA_CHECK(cudaDestroyExternalSemaphore(_cuToVkExportedSemaphore));
+    CUDA_CHECK(cudaDestroyExternalSemaphore(_vkToCuExportedSSemaphore));
+
+    vkDestroySemaphore(logicalDevice, _cuToVkSemaphore, nullptr);
+    vkDestroySemaphore(logicalDevice, _vkToCuSemaphore, nullptr);
 }

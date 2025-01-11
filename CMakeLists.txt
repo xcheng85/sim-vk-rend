@@ -44,7 +44,10 @@ FetchContent_Declare(
   GIT_REPOSITORY "https://github.com/libsdl-org/SDL.git"
   GIT_TAG release-2.30.3
 )
-FetchContent_MakeAvailable(SDL2)
+if(NOT SDL2_POPULATED)
+  FetchContent_MakeAvailable(SDL2)
+  include_directories(${SDL2_SOURCE_DIR}/include)
+endif()
 
 if (WIN32)
 message(NOTICE "Fetching volk from https://github.com/zeux/volk.git ...")
@@ -56,23 +59,28 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/zeux/volk.git
         GIT_TAG 1.3.270
 )
-FetchContent_MakeAvailable(volk)
+if(NOT volk_POPULATED)
+  FetchContent_MakeAvailable(volk)
+  include_directories(${volk_SOURCE_DIR})
+endif()
 
+# v3.2.0 support windows handle which is required for cuda interop
 FetchContent_Declare(
         vma
         GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
-        GIT_TAG v3.0.1
+        GIT_TAG v3.2.0
 )
-FetchContent_MakeAvailable(vma)
-include_directories(${SDL2_SOURCE_DIR}/include)
-include_directories(${vma_SOURCE_DIR}/include)
-include_directories(${volk_SOURCE_DIR})
+if(NOT vma_POPULATED)
+  FetchContent_MakeAvailable(vma)
+  include_directories(${vma_SOURCE_DIR}/include)
+endif()
 
 FetchContent_Declare(
   gltfsdk
   GIT_REPOSITORY https://github.com/microsoft/glTF-SDK.git
   GIT_TAG        r1.9.6.0
 )
+
 if(NOT gltfsdk_POPULATED)
   set(ENABLE_UNIT_TESTS OFF CACHE BOOL "" FORCE)
   set(ENABLE_SAMPLES OFF CACHE BOOL "" FORCE)
@@ -80,25 +88,30 @@ if(NOT gltfsdk_POPULATED)
   set(RAPIDJSON_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
   set(RAPIDJSON_BUILD_TESTS OFF CACHE BOOL "" FORCE)
   FetchContent_Populate(gltfsdk)
+  message(${gltfsdk_SOURCE_DIR})
+  add_subdirectory(${gltfsdk_SOURCE_DIR})
 endif()
-message(${gltfsdk_SOURCE_DIR})
-add_subdirectory(${gltfsdk_SOURCE_DIR})
 
 FetchContent_Declare(
         stb
         GIT_REPOSITORY https://github.com/nothings/stb.git
 )
-FetchContent_Populate(stb)
-FetchContent_MakeAvailable(stb)
-
+if(NOT stb_POPULATED)
+  FetchContent_Populate(stb)
+  FetchContent_MakeAvailable(stb)
+  message(${stb_SOURCE_DIR})
+endif()
 
 FetchContent_Declare(
     glm
     GIT_REPOSITORY https://github.com/g-truc/glm.git
     GIT_TAG 0.9.9.8
 )
-FetchContent_MakeAvailable(glm)
-include_directories(${glm_SOURCE_DIR})
+if(NOT glm_POPULATED)
+  message(${glm_SOURCE_DIR})
+  FetchContent_MakeAvailable(glm)
+  include_directories(${glm_SOURCE_DIR})
+endif()
 
 FetchContent_Declare (
   tracy
@@ -107,7 +120,10 @@ FetchContent_Declare (
   GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
 )
-FetchContent_MakeAvailable(tracy)
+if(NOT tracy_POPULATED)
+  FetchContent_MakeAvailable(tracy)
+  message(${tracy_SOURCE_DIR})
+endif()
 
 message(NOTICE "Fetching LibKTX from https://github.com/KhronosGroup/KTX-Software ...")
 set(KTX_FEATURE_STATIC_LIBRARY ON CACHE BOOL "Build KTX as a static library" FORCE)
@@ -118,7 +134,21 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/KhronosGroup/KTX-Software
         GIT_TAG        v4.3.2
 )
-FetchContent_MakeAvailable(fetch_ktx)
+if(NOT fetch_ktx_POPULATED)
+  FetchContent_MakeAvailable(fetch_ktx)
+  message(${fetch_ktx_SOURCE_DIR})  
+endif()
+
+FetchContent_Declare(
+  GPU_ENGINE_XC
+  GIT_REPOSITORY "https://github.com/xcheng85/gpu-engine-xc.git"
+  GIT_TAG        v2.0.0
+)
+FetchContent_MakeAvailable(GPU_ENGINE_XC)
+
+# CMAKE_CURRENT_SOURCE_DIR: C:/Users/cheng/github.com/xcheng85/sim-vk-rend
+message("CMAKE_CURRENT_SOURCE_DIR: ${CMAKE_CURRENT_SOURCE_DIR}")  
+message("CMAKE_SOURCE_DIR: ${CMAKE_SOURCE_DIR}")
 
 # if (NOT ANDROID)
 # FetchContent_Declare(

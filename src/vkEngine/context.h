@@ -30,6 +30,7 @@
 #include <iterator>
 #include <numeric>
 #include <filesystem> // for shader
+#include <optional>
 
 // must ahead of <vk_mem_alloc.h>, or else it will crash on vk functions
 #ifndef __ANDROID__
@@ -240,6 +241,16 @@ public:
         VkMemoryPropertyFlags memoryFlags,
         bool generateMips);
 
+#ifdef _WIN64
+    void createExportableImage(
+        const std::string &name,
+        VkImageType imageType,
+        VkFormat format,
+        VkExtent3D extent,
+        uint32_t textureMipLevelCount,
+        VkSampleCountFlagBits textureMultiSampleCount,
+        VkImageUsageFlags usage);
+#endif
     std::tuple<VkSampler> createSampler(const std::string &name);
 
     // uint32_t: set id
@@ -318,6 +329,18 @@ public:
         const CommandBufferEntity &cmdBuffer,
         void *rawData);
 
+    void submitWriteImageCommand(
+        ImageEntity &image,
+        BufferEntity &stagingBuffer,
+        CommandBufferEntity &cmdBuffer,
+        void *rawData,
+        const std::vector<VkSemaphore> &semaphoresToWait,
+        std::optional<VkPipelineStageFlags> waitStage,
+        const std::vector<VkSemaphore> &semaphoresToSignal);
+
+    // // simple version which does not involve transfer<->graphics queue ownership transfer
+    // // cmdBuffer: all the commands record there
+    // // image: which will generate mipmap pyrimad from
     void generateMipmaps(
         const ImageEntity &image,
         const CommandBufferEntity &cmdBuffer);

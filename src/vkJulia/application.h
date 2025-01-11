@@ -35,6 +35,14 @@
 #define VK_NO_PROTOTYPES // for volk
 #include "volk.h"
 #endif
+
+#ifdef _WIN64
+#include <windows.h>
+#endif
+
+#include <cuda.h>
+#include <cuda_runtime.h>
+
 // To do it properly:
 //
 // Include "vk_mem_alloc.h" file in each CPP file where you want to use the library. This includes declarations of all members of the library.
@@ -118,8 +126,10 @@ private:
     void postHostDeviceIO();
 
     void loadTextures();
-    void prepareCudaInterop();
 
+    void initCudaInterop();
+    void teardownCudaInterop();
+    
     VkContext &_ctx;
 
     // ownership of resource
@@ -150,4 +160,11 @@ private:
     std::vector<BufferEntity> _imageStagingBuffers;
     // samplers in the glb scene
     std::vector<std::tuple<VkSampler>> _samplerEntities;
+
+    // cuda and vulkan device to device sync objects;
+    VkSemaphore _cuToVkSemaphore, _vkToCuSemaphore;
+#ifdef _WIN64
+    HANDLE _cuToVkSemaphoreHandle, _vkToCuSemaphoreHandle;
+#endif
+    cudaExternalSemaphore_t _cuToVkExportedSemaphore, _vkToCuExportedSSemaphore;
 };

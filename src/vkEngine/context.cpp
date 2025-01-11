@@ -98,6 +98,11 @@ public:
         // image is owned by swap chain
         vkDestroySwapchainKHR(_logicalDevice, _swapChain, nullptr);
 
+        // clean vma resource
+        for (const auto &[memTypeIndex, pool] : _vmaCustomMemoryPool)
+        {
+            vmaDestroyPool(_vmaAllocator, pool);
+        }
         vmaDestroyAllocator(_vmaAllocator);
         vkDestroyDebugUtilsMessengerEXT(_instance, _debugMessenger, nullptr);
         vkDestroySurfaceKHR(_instance, _surface, nullptr);
@@ -177,6 +182,18 @@ public:
         VkMemoryPropertyFlags memoryFlags,
         bool generateMips);
 
+    // for cuda interop
+#ifdef _WIN64
+    void createExportableImage(
+        const std::string &name,
+        VkImageType imageType,
+        VkFormat format,
+        VkExtent3D extent,
+        uint32_t textureMipLevelCount,
+        VkSampleCountFlagBits textureMultiSampleCount,
+        VkImageUsageFlags usage);
+#endif
+
     std::tuple<VkSampler> createSampler(const std::string &name);
 
     std::vector<VkDescriptorSetLayout> createDescriptorSetLayout(std::vector<std::vector<VkDescriptorSetLayoutBinding>> &setBindings);
@@ -213,7 +230,6 @@ public:
         bool mapping = false);
 
     // for cuda interop
-
 #ifdef _WIN64
     BufferEntity createExportableBuffer(
         const std::string &name,
@@ -222,6 +238,7 @@ public:
         VkSharingMode bufferSharingMode,
         bool mapping = false);
 #endif
+
     std::unordered_map<VkDescriptorSetLayout *, std::vector<VkDescriptorSet>> allocateDescriptorSet(
         const VkDescriptorPool pool,
         const std::unordered_map<VkDescriptorSetLayout *, uint32_t> &dsAllocation);
@@ -256,15 +273,90 @@ public:
         uint32_t srcOffset = 0,
         uint32_t dstOffset = 0);
 
+    // not a complete api, v1
     void writeImage(
         const ImageEntity &image,
         const BufferEntity &stagingBuffer,
         const CommandBufferEntity &cmdBuffer,
         void *rawData);
 
+    // cmdBufferEntity: where to submit the command
+    // imageEntity: target of write op
+    // stagingBufferEntity: pinned memory< source of write
+    // rawData: needs to copy to stagingBuffer first, then staging to device memory
+
+    // semaphores to wait
+    // semaphores to signal
+    // stage of semaphores to wait
+    void submitWriteImageCommand(
+        ImageEntity &image,
+        BufferEntity &stagingBuffer,
+        CommandBufferEntity &cmdBuffer,
+        void *rawData,
+        const std::vector<VkSemaphore> &semaphoresToWait,
+        std::optional<VkPipelineStageFlags> waitStage,
+        const std::vector<VkSemaphore> &semaphoresToSignal);
+
+    // template <typename F, typename... Args>
+    // void submitCommand(
+    //     std::string name,
+    //     CommandBufferEntity &cmdBuffer,
+    //     const std::vector<VkSemaphore> &semaphoresToWait,
+    //     std::optional<VkPipelineStageFlags> waitStage,
+    //     const std::vector<VkSemaphore> &semaphoresToSignal,
+    //     F &&f, Args &&...args)
+    // {
+    //     BeginRecordCommandBuffer(cmdBuffer);
+    //     {
+    //         ZoneScopedN("submitCommand::" + name);
+    //         f(image, stagingBuffer, cmdBuffer, rawData);
+    //     }
+    //     EndRecordCommandBuffer(cmdBuffer);
+
+    //     const auto commandBuffer = std::get<COMMAND_BUFFER_ENTITY_OFFSET::COMMAND_BUFFER>(cmdBuffer);
+    //     const auto fence = std::get<COMMAND_BUFFER_ENTITY_OFFSET::FENCE>(cmdBuffer);
+    //     const auto cmdQueue = std::get<COMMAND_BUFFER_ENTITY_OFFSET::QUEUE>(cmdBuffer);
+
+    //     VkSubmitInfo submitInfo{};
+    //     submitInfo.waitSemaphoreCount = semaphoresToWait.size();
+    //     submitInfo.pWaitSemaphores = semaphoresToWait.size() ? semaphoresToWait.data() : VK_NULL_HANDLE;
+    //     if (semaphoresToWait.size())
+    //     {
+    //         ASSERT(waitStage.has_value(), "waitStage must be set when you wait for semaphores");
+    //         submitInfo.pWaitDstStageMask = &waitStage.value();
+    //     }
+
+    //     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    //     submitInfo.commandBufferCount = 1;
+    //     submitInfo.pCommandBuffers = &commandBuffer;
+    //     submitInfo.signalSemaphoreCount = semaphoresToSignal.size();
+    //     submitInfo.pSignalSemaphores = semaphoresToSignal.size() ? semaphoresToSignal.data() : VK_NULL_HANDLE;
+
+    //     // must reset fence of waiting (Signal -> not signal, due to initally fence is created with state "signaled")
+    //     VK_CHECK(vkResetFences(_logicalDevice, 1, &fence));
+    //     // This will change state of fence to signaled
+    //     VK_CHECK(vkQueueSubmit(cmdQueue, 1, &submitInfo, fence));
+    //     // this manifest a sync point, the command is submitted not necessary executed by the devices
+    //     const auto result = vkWaitForFences(_logicalDevice, 1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT);
+    //     if (result == VK_TIMEOUT)
+    //     {
+    //         // should not happen
+    //         ASSERT(false, "vkWaitForFences somehow Timed out !");
+    //         vkDeviceWaitIdle(_logicalDevice);
+    //     }
+    // }
+
+    // not a complete api, v1, host application manage sync objects
     void generateMipmaps(
         const ImageEntity &image,
         const CommandBufferEntity &cmdBuffer);
+
+    // void submitGenerateMipmapsCommand(
+    //     ImageEntity &image,
+    //     CommandBufferEntity &cmdBuffer,
+    //     const std::vector<VkSemaphore> &semaphoresToWait,
+    //     std::optional<VkPipelineStageFlags> waitStage,
+    //     const std::vector<VkSemaphore> &semaphoresToSignal);
 
     std::pair<uint32_t, CommandBufferEntity> getCommandBufferForRendering();
 
@@ -1037,6 +1129,8 @@ private:
     VkQueue _sparseQueues{VK_NULL_HANDLE};
 
     VmaAllocator _vmaAllocator{VK_NULL_HANDLE};
+    // cached and pre-requisite for cuda-vulkan interop
+    std::unordered_map<uint32_t, VmaPool> _vmaCustomMemoryPool;
 
     std::vector<VkSurfaceFormatKHR> _surfaceFormats;
     VkFormat _swapChainFormat{VK_FORMAT_B8G8R8A8_UNORM};
@@ -1801,7 +1895,12 @@ BufferEntity VkContext::Impl::createExportableBuffer(
     constexpr static VkExternalMemoryBufferCreateInfoKHR externalMemBufCreateInfo{
         VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO_KHR,
         nullptr,
-        VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT};
+#ifdef _WIN64
+        VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT
+#else
+        VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR
+#endif
+    };
 
     VkBuffer buffer{VK_NULL_HANDLE};
     VmaAllocation allocation{VK_NULL_HANDLE};
@@ -1822,14 +1921,19 @@ BufferEntity VkContext::Impl::createExportableBuffer(
     VK_CHECK(vmaFindMemoryTypeIndexForBufferInfo(_vmaAllocator, &bufferCreateInfo, &bufferMemoryAllocationCreateInfo, &memTypeIndex));
     log(Level::Info, "memTypeIndex: ", memTypeIndex);
 
-    VmaPoolCreateInfo poolCreateInfo = {};
-    poolCreateInfo.memoryTypeIndex = memTypeIndex;
-    poolCreateInfo.pMemoryAllocateNext = (void *)&exportMemAllocInfo;
+    // check if there is already a cached custom vma memory pool existed.
+    if (_vmaCustomMemoryPool.count(memTypeIndex) == 0)
+    {
+        VmaPoolCreateInfo poolCreateInfo = {};
+        poolCreateInfo.memoryTypeIndex = memTypeIndex;
+        poolCreateInfo.pMemoryAllocateNext = (void *)&exportMemAllocInfo;
 
-    VmaPool pool{VK_NULL_HANDLE};
-    VK_CHECK(vmaCreatePool(_vmaAllocator, &poolCreateInfo, &pool));
-
-    bufferMemoryAllocationCreateInfo.pool = pool;
+        VmaPool pool{VK_NULL_HANDLE};
+        VK_CHECK(vmaCreatePool(_vmaAllocator, &poolCreateInfo, &pool));
+        _vmaCustomMemoryPool.insert(std::make_pair(memTypeIndex, pool));
+    }
+    ASSERT(_vmaCustomMemoryPool.count(memTypeIndex), "_vmaCustomMemoryPool should cache hit");
+    bufferMemoryAllocationCreateInfo.pool = _vmaCustomMemoryPool[memTypeIndex];
 
     VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
                              &bufferMemoryAllocationCreateInfo,
@@ -1847,7 +1951,7 @@ BufferEntity VkContext::Impl::createExportableBuffer(
     };
     vmaGetAllocationInfo(_vmaAllocator, allocation, &allocationInfo);
     // bufferMemoryAllocationCreateInfo does not have config to allow map
-    return std::make_tuple(buffer, allocation, allocationInfo, nullptr, bufferSizeInBytes, da, handle); 
+    return std::make_tuple(buffer, allocation, allocationInfo, nullptr, bufferSizeInBytes, da, handle);
     // if (!mapping)
     //     return std::make_tuple(buffer, allocation, allocationInfo, nullptr, bufferSizeInBytes, da, handle);
     // else
@@ -2021,6 +2125,96 @@ ImageEntity VkContext::Impl::createImage(
     return std::make_tuple(image, imageView, imageAllocation, imageAllocationInfo, textureMipLevelCount,
                            extent, format);
 }
+
+#ifdef _WIN64
+void VkContext::Impl::createExportableImage(
+    const std::string &name,
+    VkImageType imageType,
+    VkFormat format,
+    VkExtent3D extent,
+    uint32_t textureMipLevelCount,
+    VkSampleCountFlagBits textureMultiSampleCount,
+    VkImageUsageFlags usage)
+{
+    // same for exportable image/buffer
+    constexpr static VkExportMemoryAllocateInfoKHR exportMemAllocInfo{
+        VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO_KHR,
+        nullptr,
+        VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT};
+
+    constexpr static VkExternalMemoryImageCreateInfo vkExternalMemImageCreateInfo = {
+        VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
+        nullptr,
+#ifdef _WIN64
+        VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT
+#else
+        VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR
+#endif
+    };
+
+    // igonore mipmap to begin with
+    VkImageCreateInfo imageCreateInfo{};
+    imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageCreateInfo.imageType = imageType;
+    imageCreateInfo.format = format;
+    imageCreateInfo.mipLevels = textureMipLevelCount;
+    imageCreateInfo.arrayLayers = 1;
+    imageCreateInfo.samples = textureMultiSampleCount;
+    imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageCreateInfo.usage = usage;
+    imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageCreateInfo.extent = extent;
+    imageCreateInfo.pNext = &vkExternalMemImageCreateInfo;
+
+    VmaAllocationCreateInfo imageMemoryAllocationCreateInfo = {
+        .usage = VMA_MEMORY_USAGE_AUTO,
+    };
+
+    uint32_t memTypeIndex = UINT32_MAX;
+    VK_CHECK(vmaFindMemoryTypeIndexForImageInfo(_vmaAllocator, &imageCreateInfo, &imageMemoryAllocationCreateInfo, &memTypeIndex));
+    log(Level::Info, "memTypeIndex: ", memTypeIndex);
+
+    // check if there is already a cached custom vma memory pool existed.
+    if (_vmaCustomMemoryPool.count(memTypeIndex) == 0)
+    {
+        VmaPoolCreateInfo poolCreateInfo = {};
+        poolCreateInfo.memoryTypeIndex = memTypeIndex;
+        poolCreateInfo.pMemoryAllocateNext = (void *)&exportMemAllocInfo;
+
+        VmaPool pool{VK_NULL_HANDLE};
+        VK_CHECK(vmaCreatePool(_vmaAllocator, &poolCreateInfo, &pool));
+        _vmaCustomMemoryPool.insert(std::make_pair(memTypeIndex, pool));
+    }
+    ASSERT(_vmaCustomMemoryPool.count(memTypeIndex), "_vmaCustomMemoryPool should cache hit");
+    imageMemoryAllocationCreateInfo.pool = _vmaCustomMemoryPool[memTypeIndex];
+
+    VkImage image;
+    VmaAllocation imageAllocation;
+    VmaAllocationInfo imageAllocationInfo;
+    VkImageView imageView;
+    VK_CHECK(vmaCreateImage(_vmaAllocator, &imageCreateInfo, &imageMemoryAllocationCreateInfo, &image,
+                            &imageAllocation, nullptr));
+
+    HANDLE handle = NULL;
+    VK_CHECK(vmaGetMemoryWin32Handle(_vmaAllocator, imageAllocation, nullptr, &handle));
+    vmaGetAllocationInfo(_vmaAllocator, imageAllocation, &imageAllocationInfo);
+
+    // image view
+    VkImageViewCreateInfo imageViewInfo = {};
+    imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    imageViewInfo.viewType = getImageViewType(imageType);
+    imageViewInfo.format = format;
+    // subresource range could limit miplevel and layer ranges, here all are open to access
+    imageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    imageViewInfo.subresourceRange.baseMipLevel = 0;
+    imageViewInfo.subresourceRange.baseArrayLayer = 0;
+    imageViewInfo.subresourceRange.layerCount = 1;
+    imageViewInfo.subresourceRange.levelCount = textureMipLevelCount;
+    imageViewInfo.image = image;
+    VK_CHECK(vkCreateImageView(_logicalDevice, &imageViewInfo, nullptr, &imageView));
+}
+#endif
 
 std::tuple<VkSampler> VkContext::Impl::createSampler(const std::string &name)
 {
@@ -2637,6 +2831,55 @@ void VkContext::Impl::writeImage(
         &bufferCopyRegion);
 }
 
+void VkContext::Impl::submitWriteImageCommand(
+    ImageEntity &image,
+    BufferEntity &stagingBuffer,
+    CommandBufferEntity &cmdBuffer,
+    void *rawData,
+    const std::vector<VkSemaphore> &semaphoresToWait,
+    std::optional<VkPipelineStageFlags> waitStage,
+    const std::vector<VkSemaphore> &semaphoresToSignal)
+{
+    BeginRecordCommandBuffer(cmdBuffer);
+    {
+        ZoneScopedN("submitWriteImageCommand::writeImage");
+        writeImage(image, stagingBuffer, cmdBuffer, rawData);
+    }
+    EndRecordCommandBuffer(cmdBuffer);
+
+    const auto commandBuffer = std::get<COMMAND_BUFFER_ENTITY_OFFSET::COMMAND_BUFFER>(cmdBuffer);
+    const auto fence = std::get<COMMAND_BUFFER_ENTITY_OFFSET::FENCE>(cmdBuffer);
+    const auto cmdQueue = std::get<COMMAND_BUFFER_ENTITY_OFFSET::QUEUE>(cmdBuffer);
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.waitSemaphoreCount = semaphoresToWait.size();
+    submitInfo.pWaitSemaphores = semaphoresToWait.size() ? semaphoresToWait.data() : VK_NULL_HANDLE;
+    if (semaphoresToWait.size())
+    {
+        ASSERT(waitStage.has_value(), "waitStage must be set when you wait for semaphores");
+        submitInfo.pWaitDstStageMask = &waitStage.value();
+    }
+
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+    submitInfo.signalSemaphoreCount = semaphoresToSignal.size();
+    submitInfo.pSignalSemaphores = semaphoresToSignal.size() ? semaphoresToSignal.data() : VK_NULL_HANDLE;
+
+    // must reset fence of waiting (Signal -> not signal, due to initally fence is created with state "signaled")
+    VK_CHECK(vkResetFences(_logicalDevice, 1, &fence));
+    // This will change state of fence to signaled
+    VK_CHECK(vkQueueSubmit(cmdQueue, 1, &submitInfo, fence));
+    // this manifest a sync point, the command is submitted not necessary executed by the devices
+    const auto result = vkWaitForFences(_logicalDevice, 1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT);
+    if (result == VK_TIMEOUT)
+    {
+        // should not happen
+        ASSERT(false, "vkWaitForFences somehow Timed out !");
+        vkDeviceWaitIdle(_logicalDevice);
+    }
+}
+
 void VkContext::Impl::generateMipmaps(
     const ImageEntity &image,
     const CommandBufferEntity &cmdBuffer)
@@ -2749,6 +2992,53 @@ void VkContext::Impl::generateMipmaps(
                          nullptr,
                          1, &convertToShaderReadBarrier);
 }
+
+// void VkContext::Impl::submitGenerateMipmapsCommand(
+//     ImageEntity &image,
+//     CommandBufferEntity &cmdBuffer,
+//     const std::vector<VkSemaphore> &semaphoresToWait,
+//     std::optional<VkPipelineStageFlags> waitStage,
+//     const std::vector<VkSemaphore> &semaphoresToSignal)
+// {
+//     BeginRecordCommandBuffer(cmdBuffer);
+//     {
+//         ZoneScopedN("submitGenerateMipmapsCommand::writeImage");
+//         generateMipmaps(image, cmdBuffer);
+//     }
+//     EndRecordCommandBuffer(cmdBuffer);
+
+//     const auto commandBuffer = std::get<COMMAND_BUFFER_ENTITY_OFFSET::COMMAND_BUFFER>(cmdBuffer);
+//     const auto fence = std::get<COMMAND_BUFFER_ENTITY_OFFSET::FENCE>(cmdBuffer);
+//     const auto cmdQueue = std::get<COMMAND_BUFFER_ENTITY_OFFSET::QUEUE>(cmdBuffer);
+
+//     VkSubmitInfo submitInfo{};
+//     submitInfo.waitSemaphoreCount = semaphoresToWait.size();
+//     submitInfo.pWaitSemaphores = semaphoresToWait.size() ? semaphoresToWait.data() : VK_NULL_HANDLE;
+//     if (semaphoresToWait.size())
+//     {
+//         ASSERT(waitStage.has_value(), "waitStage must be set when you wait for semaphores");
+//         submitInfo.pWaitDstStageMask = &waitStage.value();
+//     }
+
+//     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+//     submitInfo.commandBufferCount = 1;
+//     submitInfo.pCommandBuffers = &commandBuffer;
+//     submitInfo.signalSemaphoreCount = semaphoresToSignal.size();
+//     submitInfo.pSignalSemaphores = semaphoresToSignal.size() ? semaphoresToSignal.data() : VK_NULL_HANDLE;
+
+//     // must reset fence of waiting (Signal -> not signal, due to initally fence is created with state "signaled")
+//     VK_CHECK(vkResetFences(_logicalDevice, 1, &fence));
+//     // This will change state of fence to signaled
+//     VK_CHECK(vkQueueSubmit(cmdQueue, 1, &submitInfo, fence));
+//     // this manifest a sync point, the command is submitted not necessary executed by the devices
+//     const auto result = vkWaitForFences(_logicalDevice, 1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT);
+//     if (result == VK_TIMEOUT)
+//     {
+//         // should not happen
+//         ASSERT(false, "vkWaitForFences somehow Timed out !");
+//         vkDeviceWaitIdle(_logicalDevice);
+//     }
+// }
 
 std::pair<uint32_t, CommandBufferEntity> VkContext::Impl::getCommandBufferForRendering()
 {
@@ -3037,6 +3327,20 @@ ImageEntity VkContext::createImage(
                                textureLayersCount, textureMultiSampleCount, usage, memoryFlags, generateMips);
 }
 
+#ifdef _WIN64
+void VkContext::createExportableImage(
+    const std::string &name,
+    VkImageType imageType,
+    VkFormat format,
+    VkExtent3D extent,
+    uint32_t textureMipLevelCount,
+    VkSampleCountFlagBits textureMultiSampleCount,
+    VkImageUsageFlags usage)
+{
+    return _pimpl->createExportableImage(name, imageType, format, extent, textureMipLevelCount, textureMultiSampleCount, usage);
+}
+#endif
+
 std::tuple<VkSampler> VkContext::createSampler(const std::string &name)
 {
     return _pimpl->createSampler(name);
@@ -3148,6 +3452,18 @@ void VkContext::writeImage(
     void *rawData)
 {
     return _pimpl->writeImage(image, stagingBuffer, cmdBuffer, rawData);
+}
+
+void VkContext::submitWriteImageCommand(
+    ImageEntity &image,
+    BufferEntity &stagingBuffer,
+    CommandBufferEntity &cmdBuffer,
+    void *rawData,
+    const std::vector<VkSemaphore> &semaphoresToWait,
+    std::optional<VkPipelineStageFlags> waitStage,
+    const std::vector<VkSemaphore> &semaphoresToSignal)
+{
+    return _pimpl->submitWriteImageCommand(image, stagingBuffer, cmdBuffer, rawData, semaphoresToWait, waitStage, semaphoresToSignal);
 }
 
 void VkContext::BeginRecordCommandBuffer(CommandBufferEntity &cmdBuffer)

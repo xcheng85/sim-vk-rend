@@ -222,12 +222,14 @@ public:
         VmaMemoryUsage memoryUsage,
         bool mapping = false);
 
+#ifdef _WIN64
     BufferEntity createExportableBuffer(
         const std::string &name,
         VkDeviceSize bufferSizeInBytes,
         VkBufferUsageFlags bufferUsageFlag,
         VkSharingMode bufferSharingMode,
         bool mapping = false);
+#endif
 
     ImageEntity createImage(
         const std::string &name,

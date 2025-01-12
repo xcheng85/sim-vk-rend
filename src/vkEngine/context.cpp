@@ -3296,6 +3296,7 @@ BufferEntity VkContext::createBuffer(
         mapping);
 }
 
+#ifdef _WIN64
 BufferEntity VkContext::createExportableBuffer(
     const std::string &name,
     VkDeviceSize bufferSizeInBytes,
@@ -3310,6 +3311,7 @@ BufferEntity VkContext::createExportableBuffer(
         bufferSharingMode,
         mapping);
 }
+#endif
 
 ImageEntity VkContext::createImage(
     const std::string &name,

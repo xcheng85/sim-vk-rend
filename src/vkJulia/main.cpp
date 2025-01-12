@@ -106,7 +106,7 @@ int main(int argc, char **argv)
         1280.0 / 720.0};
 
     WindowConfig cfg{1280, 720, "vkJulia"};
-    Window window(&cfg, _orbitCamera);
+    WindowEntity window(&cfg, _orbitCamera);
 
     VK_CHECK(volkInitialize());
     // c api

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <assert.h>
+#include <vector>
 #include <string>
 #include <iostream>
 #include <array>
@@ -261,16 +262,17 @@ inline Plane createPlaneFromPoints(const glm::vec3 &p1, const glm::vec3 &p2, con
     return Plane(n, d);
 }
 
-inline void *aligned_alloc(size_t size, size_t alignment)
-{
-    void *data = nullptr;
-#if defined(_MSC_VER) || defined(__MINGW32__)
-    data = _aligned_malloc(size, alignment);
-#else
+// break the vmaAllocator
+// inline void *aligned_alloc(size_t size, size_t alignment)
+// {
+//     void *data = nullptr;
+// #if defined(_MSC_VER) || defined(__MINGW32__)
+//     data = _aligned_malloc(size, alignment);
+// #else
 
-#endif
-    return data;
-}
+// #endif
+//     return data;
+// }
 
 inline void aligned_free(void *data)
 {

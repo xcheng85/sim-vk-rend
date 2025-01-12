@@ -1,6 +1,5 @@
 #pragma once
 #include <iostream>
-#include <format>
 #include <SDL.h>
 #include <SDL_vulkan.h>
 #include <SDL_video.h>
@@ -26,16 +25,16 @@ struct WindowConfig
 //     t.height;
 // }
 
-class Window
+class WindowEntity
 {
 public:
-    Window() = delete;
-    Window(void *configuration, CameraBase &camera) : _camera{camera}
+    WindowEntity() = delete;
+    WindowEntity(void *configuration, CameraBase &camera) : _camera{camera}
     {
         const auto &config = *(static_cast<WindowConfig *>(configuration));
         if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
         {
-            std::cerr << std::format("SDL Init error: {}\n", SDL_GetError());
+            log(Level::Info, "SDL Init error: ", SDL_GetError());
             return;
         }
 
@@ -44,8 +43,7 @@ public:
         SDL_DisplayMode current;
         SDL_GetCurrentDisplayMode(0, &current);
 
-        
-
+    
         SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
         _window = SDL_CreateWindow(config.title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, config.width, config.height, window_flags);
         int w, h;
@@ -137,8 +135,4 @@ private:
     SDL_Window *_window;
     CameraBase &_camera;
     glm::ivec2 _winDimension{0};
-
-    // bool _firstMouseCursor{true};
-    // int _lastMouseCursorX;
-    // int _lastMouseCursorY;
 };

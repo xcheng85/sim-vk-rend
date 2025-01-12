@@ -38,11 +38,10 @@ VK_KHR_external_memory - device extension
 This extension enables an application to export non-Vulkan handles from Vulkan memory objects such that the underlying resources can be referenced outside the scope of the Vulkan logical device that created them.
 
 
-
 ### step3: matching device
 
 
-### step4: for images
+### step4: for images / buffers
 steps when create vulkan image: 
 
 1. create memory for the image: vkAllocateMemory
@@ -80,6 +79,19 @@ need to focus the following:
 
 
 refer to the unit test "static void TestWin32Handles()" of vma_allocator repo
+
+### step5: exportable Semaphore
+
+VkExportSemaphoreCreateInfo - Structure specifying handle types that can be exported from a semaphore
+VkExportSemaphoreWin32HandleInfoKHR - Structure specifying additional attributes of Windows handles exported from a semaphore
+
+Semaphore is 1 to 1 direction, Device->Device Synchronization
+Auto-Reset - 1:1 signal:wait relationship
+
+we need two semaphore to represent two communication channels: 
+1. cuda device to vulkan device 
+2. vulkan device to cuda device 
+
 
 ## multi-threading + command buffer
 1. separate command pool per thread
@@ -212,3 +224,28 @@ but bind descriptorset with different offset
 ### Implement with push constant
 no buffer needed, 
 vkCmdPushConstants before draw command : change them on a per-mesh or per-pass basis.
+
+
+## Vk sync model (refer to Vulkan-04-Timeline-Semaphore-SIGGRAPH-Jul19.pdf)
+
+• Two Coarse-Grained Primitives: VkSemaphore and VkFence
+
+• VkSemaphore: Device->Device Synchronization
+
+- Binary State
+- Auto-Reset - 1:1 signal:wait relationship
+- Queue operations wait on and signal an arbitrary number of semaphores
+- Reusable, but only in the unsignaled state
+- Signal must be queued before wait is queued
+
+• VkFence: Device->Host Synchronization
+- Binary State
+- Manual Reset – 1:<N> signal:wait relationship
+- Queue operations signal at most one fence
+- Reusable, but only in the unsignaled state
+
+### 1. fence + semophre
+
+### 2. timeline 
+
+### 3. external semaphore for cuda interop

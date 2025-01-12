@@ -73,7 +73,7 @@ struct AndroidNativeWindowDeleter
 #endif
 #endif
 
-class Window;
+class WindowEntity;
 class CameraBase;
 class VkContext;
 

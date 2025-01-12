@@ -39,7 +39,7 @@ class VkContext::Impl
 public:
     explicit Impl(
         const VkContext &ctx,
-        const Window &window,
+        const WindowEntity &window,
         const std::vector<const char *> &instanceValidationLayers,
         const std::set<std::string> &instanceExtensions,
         const std::vector<const char *> deviceExtensions)
@@ -630,12 +630,15 @@ private:
         createInfo.enabledExtensionCount = (uint32_t)instanceExtensions.size();
         createInfo.ppEnabledExtensionNames = instanceExtensions.data();
 
+        // createInfo.enabledLayerCount = 0;
+        // createInfo.pNext = nullptr;
         if (_enableValidationLayers)
         {
             createInfo.enabledLayerCount =
                 static_cast<uint32_t>(_instanceValidationLayers.size());
             createInfo.ppEnabledLayerNames = _instanceValidationLayers.data();
-            createInfo.pNext = &validationFeatures;
+            createInfo.pNext = nullptr;
+            // createInfo.pNext = &validationFeatures;
         }
         else
         {
@@ -1004,7 +1007,7 @@ private:
     {
         return _fragmentDensityMapFeature.fragmentDensityMap == VK_TRUE;
     }
-    const Window &_window;
+    const WindowEntity &_window;
     const std::vector<const char *> _instanceValidationLayers;
     const std::set<std::string> &_instanceExtensions;
     const std::vector<const char *> _deviceExtensions;
@@ -1393,17 +1396,34 @@ void VkContext::Impl::createVMA()
         .vkGetDeviceBufferMemoryRequirements = vkGetDeviceBufferMemoryRequirements,
         .vkGetDeviceImageMemoryRequirements = vkGetDeviceImageMemoryRequirements,
 #endif
-// extra registeration for cuda interop
-#ifdef _WIN64
-        .vkGetMemoryWin32HandleKHR = vkGetMemoryWin32HandleKHR,
-#endif
+        // extra registeration for cuda interop
+        #ifdef _WIN64
+                .vkGetMemoryWin32HandleKHR = vkGetMemoryWin32HandleKHR,
+        #endif
     };
+
+    // VmaAllocatorCreateInfo allocatorInfo = {};
+    // allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+    // allocatorInfo.physicalDevice = _selectedPhysicalDevice;
+    // allocatorInfo.device = _logicalDevice;
+    // allocatorInfo.instance = _instance;
+    // allocatorInfo.pVulkanFunctions = &vulkanFunctions;
+
+    const VkDeviceSize HEAP_SIZE_LIMIT = 100ull * 1024 * 1024; // 100 MB
+    const VkDeviceSize BLOCK_SIZE = 10ull * 1024 * 1024;       // 10 MB
+
+    VkDeviceSize heapSizeLimit[VK_MAX_MEMORY_HEAPS];
+    for (uint32_t i = 0; i < VK_MAX_MEMORY_HEAPS; ++i)
+    {
+        heapSizeLimit[i] = HEAP_SIZE_LIMIT;
+    }
 
     VmaAllocatorCreateInfo allocatorInfo = {};
     allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     allocatorInfo.physicalDevice = _selectedPhysicalDevice;
     allocatorInfo.device = _logicalDevice;
     allocatorInfo.instance = _instance;
+    // allocatorInfo.pHeapSizeLimit = nullptr;
     allocatorInfo.pVulkanFunctions = &vulkanFunctions;
     vmaCreateAllocator(&allocatorInfo, &_vmaAllocator);
     ASSERT(_vmaAllocator, "Failed to create vma allocator");
@@ -3158,7 +3178,7 @@ VkPhysicalDeviceFragmentDensityMapFeaturesEXT VkContext::sFragmentDensityMapFeat
     .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT,
 };
 
-VkContext::VkContext(const Window &window,
+VkContext::VkContext(const WindowEntity &window,
                      const std::vector<const char *> &instanceValidationLayers,
                      const std::set<std::string> &instanceExtensions,
                      const std::vector<const char *> deviceExtensions)

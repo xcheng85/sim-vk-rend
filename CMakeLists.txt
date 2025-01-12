@@ -23,14 +23,18 @@ find_package(Vulkan REQUIRED SPIRV-Tools)
 
 include(FetchContent)
 
+# tag: vulkan-sdk-1.3.296.0
+# build the glslang on the fly
 if (VulkanHeaderVersion GREATER_EQUAL 275)
+  message(STATUS "VulkanHeaderVersion: ${VulkanHeaderVersion}-${CMAKE_BUILD_TYPE}")
   FetchContent_Declare(glslang
       GIT_REPOSITORY https://github.com/KhronosGroup/glslang
       GIT_TAG vulkan-sdk-1.3.${VulkanHeaderVersion}.0)
   if (NOT glslang_POPULATED)
     set(ENABLE_OPT OFF)
   endif()
-  set(GLSLANG_LIB "glslang") 
+  set(GLSLANG_LIB "glslang")
+  FetchContent_MakeAvailable(glslang)
 else()
   find_package(Vulkan REQUIRED SPIRV-Tools glslang)
 endif()
@@ -45,10 +49,14 @@ FetchContent_Declare(
   GIT_TAG release-2.30.3
 )
 if(NOT SDL2_POPULATED)
+  message(STATUS "SDL2: FetchContent_MakeAvailable")
   FetchContent_MakeAvailable(SDL2)
+  message(STATUS "SDL2_INCLUDE_DIR: ${SDL2_INCLUDE_DIR}")
   include_directories(${SDL2_SOURCE_DIR}/include)
 endif()
 
+#  linux
+set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_XLIB_KHR)
 if (WIN32)
 message(NOTICE "Fetching volk from https://github.com/zeux/volk.git ...")
 set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_WIN32_KHR)
@@ -74,6 +82,9 @@ if(NOT vma_POPULATED)
   FetchContent_MakeAvailable(vma)
   include_directories(${vma_SOURCE_DIR}/include)
 endif()
+
+# set(VMA_STATIC_VULKAN_FUNCTIONS OFF CACHE BOOL "" FORCE)
+# set(VMA_DYNAMIC_VULKAN_FUNCTIONS ON CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
   gltfsdk
@@ -108,8 +119,8 @@ FetchContent_Declare(
     GIT_TAG 0.9.9.8
 )
 if(NOT glm_POPULATED)
-  message(${glm_SOURCE_DIR})
   FetchContent_MakeAvailable(glm)
+  message(${glm_SOURCE_DIR})
   include_directories(${glm_SOURCE_DIR})
 endif()
 
@@ -139,12 +150,12 @@ if(NOT fetch_ktx_POPULATED)
   message(${fetch_ktx_SOURCE_DIR})  
 endif()
 
-FetchContent_Declare(
-  GPU_ENGINE_XC
-  GIT_REPOSITORY "https://github.com/xcheng85/gpu-engine-xc.git"
-  GIT_TAG        v2.0.0
-)
-FetchContent_MakeAvailable(GPU_ENGINE_XC)
+# FetchContent_Declare(
+#   GPU_ENGINE_XC
+#   GIT_REPOSITORY "https://github.com/xcheng85/gpu-engine-xc.git"
+#   GIT_TAG        v2.0.0
+# )
+# FetchContent_MakeAvailable(GPU_ENGINE_XC)
 
 # CMAKE_CURRENT_SOURCE_DIR: C:/Users/cheng/github.com/xcheng85/sim-vk-rend
 message("CMAKE_CURRENT_SOURCE_DIR: ${CMAKE_CURRENT_SOURCE_DIR}")  
@@ -178,6 +189,18 @@ message("CMAKE_SOURCE_DIR: ${CMAKE_SOURCE_DIR}")
 #the former disables GNU extensions.
 # set(CMAKE_CXX_FLAGS "-std=c++0x -lstdc++fs")
 
+
+# only windows has postfix d
+# if(WIN32)
+#     set(CMAKE_DEBUG_POSTFIX "d")
+#     add_definitions(-DGLSLANG_OSINCLUDE_WIN32)
+# elseif(UNIX OR ANDROID)
+#     add_definitions(-DGLSLANG_OSINCLUDE_UNIX)
+# else()
+#     message("unknown platform")
+# endif()
+
+if (WIN32)
 set(RequiredVulkanSDKLIBS 
 debug SDL2d optimized SDL2
 debug SDL2maind optimized SDL2main
@@ -192,6 +215,23 @@ debug glslang-default-resource-limitsd optimized glslang-default-resource-limits
 debug spirv-cross-cored optimized spirv-cross-core
 debug spirv-cross-glsld optimized spirv-cross-glsl
 debug spirv-cross-reflectd optimized spirv-cross-reflect)
+else()
+set(RequiredVulkanSDKLIBS 
+SDL2::SDL2main 
+SDL2::SDL2-static 
+debug OSDependent 
+debug MachineIndependent 
+debug GenericCodeGen 
+debug glslang 
+debug SPIRV 
+debug SPIRV-Tools 
+debug SPIRV-Tools-opt 
+debug glslang-default-resource-limits 
+debug spirv-cross-core 
+debug spirv-cross-glsl 
+debug spirv-cross-reflect 
+)
+endif()
 
 add_subdirectory(src bin)
 # add_subdirectory(volk)

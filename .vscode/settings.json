@@ -113,6 +113,10 @@
         "stacktrace": "cpp",
         "stdfloat": "cpp",
         "strstream": "cpp",
-        "syncstream": "cpp"
+        "syncstream": "cpp",
+        "*.tcc": "cpp",
+        "string_view": "cpp",
+        "rope": "cpp",
+        "text_encoding": "cpp"
     }
 }

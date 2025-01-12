@@ -77,7 +77,7 @@ enum COMMAND_SEMANTIC : int
     COMMAND_SEMANTIC_SIZE
 };
 
-class Window;
+class WindowEntity;
 
 using CommandBufferEntity = std::tuple<VkCommandPool, VkCommandBuffer, VkFence, uint32_t, VkQueue>;
 enum COMMAND_BUFFER_ENTITY_OFFSET : int
@@ -142,7 +142,7 @@ class VkContext
 public:
     VkContext() = delete;
     VkContext(
-        const Window &window,
+        const WindowEntity &window,
         const std::vector<const char *> &instanceValidationLayers,
         const std::set<std::string> &instanceExtensions,
         const std::vector<const char *> deviceExtensions);
